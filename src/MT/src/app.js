@@ -19,17 +19,12 @@ app.use(express.static("public"))
 app.use(cookieParser())
 
           
-import routes from './routes/index.routes.js'
-import girirajRoutes from "./Giriraj-Admin/src/routes/index.routes.js";
-import mtRoutes from "./MT/src/routes/index.routes.js";
+
 import {errorHandler} from "./utils/ApiError.js"
+import girirajRoutes from "./routes/index.routes.js";
 
 
-
-//routes declaration
-app.use("/api/v2", routes);
-app.use("/api/v2/giriraj", girirajRoutes);
-app.use("/api/v2/mt", mtRoutes);
+app.use("/api/v2", girirajRoutes);
 
 app.get('/', (req, res) => {
     res.status(httpStatus.OK).send({ status: 'Health Check :) Server is up and running' });
