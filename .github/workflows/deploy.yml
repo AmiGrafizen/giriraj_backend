@@ -1,0 +1,48 @@
+name: Deploy to backend.feedbacks.live
+
+on:
+  push:
+    branches:
+      - main    # change if your branch name is "master"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the latest code from the repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Setup Node.js (only if your backend uses Node)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # Step 3: Install dependencies & build (ignore dependency conflicts)
+      - name: Install dependencies & Build
+        run: |
+          npm install --legacy-peer-deps
+          npm run build || echo "No build step found"
+
+      # Step 4: Deploy the files to your hosting account via FTP
+      - name: FTP Deploy to backend.feedbacks.live
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          port: 21
+          server-dir: /domains/backend.feedbacks.live/public_html/
+          local-dir: ./      # or ./build/ or ./dist/ depending on your project
+          exclude: |
+            **/node_modules/**
+            **/.git*
+            **/.github/**
+            **/.env
+            **/README.md
+            **/package*.json
+            **/uploads/**
+            **/logs/**
