@@ -3,7 +3,7 @@ import Counter from "./counter.model.js"; // ✅ import counter model
 
 const itemSchema = new mongoose.Schema({
   itemName: { type: String, required: true },
-  serialNo: { type: String },
+  serialNumbers: [{ type: String }],
   modelNo: { type: String },
   qty: { type: Number, required: true, default: 1 },
   unit: { type: String, default: "NONE" },
@@ -78,4 +78,4 @@ purchaseSchema.pre("save", async function (next) {
   }
 });
 
-export default mongoose.model("MTPurchase", purchaseSchema);
+export default purchaseSchema;

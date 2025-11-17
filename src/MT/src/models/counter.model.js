@@ -5,4 +5,4 @@ const counterSchema = new mongoose.Schema({
   seq: { type: Number, default: 0 },
 });
 
-export default mongoose.model("MTCounter", counterSchema);
+export default counterSchema;

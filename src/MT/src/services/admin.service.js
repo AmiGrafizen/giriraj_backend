@@ -1,42 +1,33 @@
-import branchModel from "../models/branch.model.js";
-import infoModel from "../models/info.model.js";
-import partyModel from "../models/party.model.js";
-import purchaseModel from "../models/purchase.model.js";
-import roleModel from "../models/role.model.js";
-import roleUserModel from "../models/roleUser.model.js";
-import saleModel from "../models/sale.model.js";
-import stockTransferModel from "../models/stockTransfer.model.js";
+import { mtModels } from "../db/index.js";
 
 const createParty = async (data) => {
-  const party = new partyModel(data);
-  return await party.save();
+  return await mtModels?.MTParty?.create(data);
 };
 
 const getParties = async () => {
-  return await partyModel.find();
+  return await mtModels?.MTParty.find();
 };
 
 const getPartyById = async (id) => {
-  return await partyModel.findById(id);
+  return await mtModels?.MTParty?.findById(id);
 };
 
 const getPartyByNameService = async (name) => {
-  return await partyModel.findOne({
+  return await mtModels?.MTParty?.findOne({
     partyName: { $regex: new RegExp(`^${name}$`, "i") },
   });
 };
 
 const updateParty = async (id, data) => {
-  return await partyModel.findByIdAndUpdate(id, data, { new: true });
+  return await mtModels?.MTParty.findByIdAndUpdate(id, data, { new: true });
 };
 
 const deleteParty = async (id) => {
-  return await partyModel.findByIdAndDelete(id);
+  return await mtModels?.MTParty.findByIdAndDelete(id);
 };
 
 const createPurchase = async (data) => {
-  const purchase = new purchaseModel(data);
-  return await purchase.save();
+    return await mtModels?.MTPurchase?.create(data);
 };
 
 const getAllPurchases = async (filters = {}) => {
@@ -63,27 +54,26 @@ const getAllPurchases = async (filters = {}) => {
   }
 
   // ✅ If no filters applied, query remains empty => fetch all sales
-  const sales = await purchaseModel.find(query)
+  const sales = await mtModels?.MTPurchase.find(query)
     .populate("partyId", "partyName")
     .sort({ createdAt: -1 });
 
   return sales;
 };
 const getPurchaseById = async (id) => {
-  return await purchaseModel.findById(id).populate("partyId", "partyName").lean();
+  return await mtModels?.MTPurchase.findById(id).populate("partyId", "partyName").lean();
 };
 
 const updatePurchase = async (id, data) => {
-  return await purchaseModel.findByIdAndUpdate(id, data, { new: true }).lean();
+  return await mtModels?.MTPurchase.findByIdAndUpdate(id, data, { new: true }).lean();
 };
 
 const deletePurchase = async (id) => {
-  return await purchaseModel.findByIdAndDelete(id);
+  return await mtModels?.MTPurchase.findByIdAndDelete(id);
 };
 
  const createSale = async (data) => {
-  const sale = new saleModel(data);
-  return await sale.save();
+    return await mtModels?.MTSale?.create(data);
 };
 
 const getAllSales = async (filters = {}) => {
@@ -110,7 +100,7 @@ const getAllSales = async (filters = {}) => {
   }
 
   // ✅ If no filters applied, query remains empty => fetch all sales
-  const sales = await saleModel.find(query)
+  const sales = await mtModels?.MTSale.find(query)
     .populate("partyId", "partyName")
     .sort({ createdAt: -1 });
 
@@ -119,36 +109,36 @@ const getAllSales = async (filters = {}) => {
 
 
 const getSaleById = async (id) => {
-  return await saleModel.findById(id).populate("partyId", "partyName").lean();
+  return await mtModels?.MTSale.findById(id).populate("partyId", "partyName").lean();
 };
 
 const updateSale = async (id, data) => {
-  return await saleModel.findByIdAndUpdate(id, data, { new: true }).lean();
+  return await mtModels?.MTSale.findByIdAndUpdate(id, data, { new: true }).lean();
 };
 
 const deleteSale = async (id) => {
-  return await saleModel.findByIdAndDelete(id);
+  return await mtModels?.MTSale.findByIdAndDelete(id);
 };
 
  const createItem = async (data) => {
-  const item = new itemModel(data);
-  return await item.save();
+    return await mtModels?.MTItem?.create(data);
+
 };
 
 const getAllItems = async (filter = {}) => {
-  return await itemModel.find(filter).sort({ createdAt: -1 });
+  return await mtModels?.MTItem?.find(filter).sort({ createdAt: -1 });
 };
 
 const getItemById = async (id) => {
-  return await itemModel.findById(id);
+  return await mtModels?.MTItem?.findById(id);
 };
 
 const updateItem = async (id, data) => {
-  return await itemModel.findByIdAndUpdate(id, data, { new: true });
+  return await mtModels?.MTItem?.findByIdAndUpdate(id, data, { new: true });
 };
 
 const deleteItem = async (id) => {
-  return await itemModel.findByIdAndDelete(id);
+  return await mtModels?.MTItem?.findByIdAndDelete(id);
 };
 
  const getSalePurchaseByPartyService = async (startDate, endDate) => {
@@ -168,7 +158,7 @@ const deleteItem = async (id) => {
   }
 
   // --- Aggregate Sales ---
-  const saleAgg = await saleModel.aggregate([
+  const saleAgg = await mtModels?.MTSale.aggregate([
     { $match: saleMatch },
     {
       $group: {
@@ -179,7 +169,7 @@ const deleteItem = async (id) => {
   ]);
 
   // --- Aggregate Purchases ---
-  const purchaseAgg = await purchaseModel.aggregate([
+  const purchaseAgg = await mtModels?.MTPurchase.aggregate([
     { $match: purchaseMatch },
     {
       $group: {
@@ -251,106 +241,103 @@ const deleteItem = async (id) => {
 };
 
 const createInfo = async (data) => {
-  const info = await infoModel.create(data);
-  return info;
+  return await mtModels?.MTInfo.create(data);
 };
 
 const getAllInfo = async () => {
-  return await infoModel.find().populate("userId", "name email");
+  return await mtModels?.MTInfo.find().populate("userId", "name email");
 };
 
 const getInfoById = async (id) => {
-  return await infoModel.findById(id).populate("userId", "name email");
+  return await mtModels?.MTInfo.findById(id).populate("userId", "name email");
 };
 
 const updateInfo = async (id, data) => {
-  return await infoModel.findByIdAndUpdate(id, data, { new: true });
+  return await mtModels?.MTInfo.findByIdAndUpdate(id, data, { new: true });
 };
 
 const deleteInfo = async (id) => {
-  return await infoModel.findByIdAndDelete(id);
+  return await mtModels?.MTInfo.findByIdAndDelete(id);
 };
 
 const getInfoByUserId = async (userId) => {
-  return await infoModel.findOne({ userId }).populate("userId", "name email");
+  return await mtModels?.MTInfo.findOne({ userId }).populate("userId", "name email");
 };
 
 const createRole = async (data) => {
-  const role = await roleModel.create(data);
-  return role;
+  return await mtModels?.MTRole?.create(data);
 };
 
 const getAllRoles = async () => {
-  return await roleModel.find();
+  return await mtModels?.MTRole?.find();
 };
 
 const getRoleById = async (id) => {
-  return await roleModel.findById(id);
+  return await mtModels?.MTRole?.findById(id);
 };
 
 const updateRole = async (id, data) => {
-  return await roleModel.findByIdAndUpdate(id, data, { new: true });
+  return await mtModels?.MTRole?.findByIdAndUpdate(id, data, { new: true });
 };
 
 const deleteRole = async (id) => {
-  return await roleModel.findByIdAndDelete(id);
+  return await mtModels?.MTRole?.findByIdAndDelete(id);
 };
 
 const createRoleUser = async (data) => {
-  const roleUser = await roleUserModel.create(data);
+  const roleUser = await mtModels?.MTRoleUser?.create(data);
   return roleUser;
 };
 
 const getAllRoleUsers = async () => {
-  return await roleUserModel.find().populate("role", "role permission");
+  return await mtModels?.MTRoleUser.find().populate("role", "role permission");
 };
 
 const getRoleUserById = async (id) => {
-  return await roleUserModel.findById(id).populate("role", "role permission");
+  return await mtModels?.MTRoleUser.findById(id).populate("role", "role permission");
 };
 
 const updateRoleUser = async (id, data) => {
-  return await roleUserModel.findByIdAndUpdate(id, data, { new: true }).populate(
+  return await mtModels?.MTRoleUser.findByIdAndUpdate(id, data, { new: true }).populate(
     "role",
     "role permission"
   );
 };
 
 const deleteRoleUser = async (id) => {
-  return await roleUserModel.findByIdAndDelete(id);
+  return await mtModels?.MTRoleUser.findByIdAndDelete(id);
 };
 
 const getRoleUsersByRole = async (roleId) => {
-  return await roleUserModel.find({ role: roleId }).populate("role", "role permission");
+  return await mtModels?.MTRoleUser.find({ role: roleId }).populate("role", "role permission");
 };
 
 const createBranch = async (data) => {
-  return await branchModel.create(data);
+  return await mtModels?.MTBranch.create(data);
 };
 
 const getAllBranches = async () => {
-  return await branchModel.find().populate("company", "firmName"); // fetch firm name from Info
+  return await mtModels?.MTBranch.find().populate("company", "firmName"); // fetch firm name from Info
 };
 
 const getBranchById = async (id) => {
-  return await branchModel.findById(id).populate("company", "firmName");
+  return await mtModels?.MTBranch.findById(id).populate("company", "firmName");
 };
 
 const updateBranch = async (id, data) => {
-  return await branchModel.findByIdAndUpdate(id, data, { new: true });
+  return await mtModels?.MTBranch.findByIdAndUpdate(id, data, { new: true });
 };
 
 const deleteBranch = async (id) => {
-  return await branchModel.findByIdAndDelete(id);
+  return await mtModels?.MTBranch.findByIdAndDelete(id);
 };
 
 const getBranchesByCompany = async (companyId) => {
-  return await branchModel.find({ company: companyId }).populate("company", "firmName");
+  return await mtModels?.MTBranch.find({ company: companyId }).populate("company", "firmName");
 };
 
 const createTransfer = async (data) => {
-  const transfer = new stockTransferModel(data);
-  return await transfer.save();
+  return await  mtModels?.MTStockTransfer?.create(data);
 };
 
 const getTransfers = async (filters = {}) => {
@@ -388,7 +375,7 @@ const getTransfers = async (filters = {}) => {
   // 🧩 If no filters → query remains empty → fetch all transfers
   console.log("🔍 Final Mongo Query:", JSON.stringify(query, null, 2));
 
-  const transfers = await stockTransferModel.find(query)
+  const transfers = await mtModels?.MTStockTransfer?.find(query)
     .populate("companyId", "firmName name")
     .populate("fromBranchId", "name address")
     .populate("toBranchId", "name address")
@@ -399,18 +386,18 @@ const getTransfers = async (filters = {}) => {
 };
 
 const getTransferById = async (id) => {
-  return await stockTransferModel.findById(id)
+  return await mtModels?.MTStockTransfer?.findById(id)
     .populate("companyId", "firmName")
     .populate("fromBranchId", "branchName address")
     .populate("toBranchId", "branchName address");
 };
 
 const deleteTransfer = async (id) => {
-  return await stockTransferModel.findByIdAndDelete(id);
+  return await mtModels?.MTStockTransfer?.findByIdAndDelete(id);
 };
 
 const updateTransfer = async (id, data) => {
-  return await stockTransferModel.findByIdAndUpdate(id, data, {
+  return await mtModels?.MTStockTransfer?.findByIdAndUpdate(id, data, {
     new: true,
   })
     .populate("companyId", "firmName")
@@ -418,10 +405,83 @@ const updateTransfer = async (id, data) => {
     .populate("toBranchId", "branchName");
 };
 
+ const getAvailableStocksService = async () => {
+  const data = await mtModels?.MTPurchase.aggregate([
+    { $unwind: "$items" },
+    {
+      $project: {
+        itemName: "$items.itemName",
+        serialNumbers: "$items.serialNumbers",
+      },
+    },
+    { $unwind: "$serialNumbers" },
+    {
+      $group: {
+        _id: "$itemName",
+        stock: { $sum: 1 },
+        serials: { $addToSet: "$serialNumbers" },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        name: "$_id",
+        stock: 1,
+        serials: 1,
+      },
+    },
+  ]);
+
+  return data;
+};
+
+const getSerialsByProductService = async (productName) => {
+  const product = await mtModels?.MTPurchase.aggregate([
+    { $unwind: "$items" },
+    { $match: { "items.itemName": productName } },
+    {
+      $project: {
+        serialNumbers: "$items.serialNumbers",
+      },
+    },
+  ]);
+
+  const serials = product.flatMap((p) => p.serialNumbers || []);
+  return [...new Set(serials)]; // remove duplicates
+};
+
+const createSalesParty = async (data) => {
+  return await mtModels?.MTSalesParty(data);
+
+};
+
+const getSalesParties = async () => {
+  return await mtModels?.MTSalesParty.find();
+};
+
+const getSalesPartyById = async (id) => {
+  return await mtModels?.MTSalesParty.findById(id);
+};
+
+const getSalesPartyByNameService = async (name) => {
+  return await mtModels?.MTSalesParty.findOne({
+    partyName: { $regex: new RegExp(`^${name}$`, "i") },
+  });
+};
+
+const updateSalesParty = async (id, data) => {
+  return await mtModels?.MTSalesParty.findByIdAndUpdate(id, data, { new: true });
+};
+
+const deleteSalesParty = async (id) => {
+  return await mtModels?.MTSalesParty.findByIdAndDelete(id);
+};
+
 
 export default { createParty, getParties, getPartyById, getPartyByNameService, updateParty, deleteParty, createPurchase, getAllPurchases, getPurchaseById, updatePurchase, deletePurchase,
     createSale, getAllSales, getSaleById, updateSale, deleteSale, createItem, getAllItems, getItemById, updateItem, deleteItem, getSalePurchaseByPartyService, createInfo, getAllInfo, getInfoById,
     getInfoByUserId, updateInfo, deleteInfo, createRole, getAllRoles, getRoleById, updateRole, deleteRole, createRoleUser, getAllRoleUsers, getRoleUserById,
     updateRoleUser, deleteRoleUser, getRoleUsersByRole, createBranch, getAllBranches, getBranchById, updateBranch, deleteBranch, getBranchesByCompany, createTransfer, getTransferById, getTransfers,
-    deleteTransfer, updateTransfer,
+    deleteTransfer, updateTransfer, getAvailableStocksService, getSerialsByProductService, createSalesParty, getSalesParties, getSalesPartyById,
+    updateSalesParty, deleteSalesParty, getSalesPartyByNameService,
 }

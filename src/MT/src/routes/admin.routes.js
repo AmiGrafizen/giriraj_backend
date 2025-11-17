@@ -94,4 +94,19 @@ router.route("/stock-transfer/:id")
 .put(adminController.updateBranch)
 .delete(adminController.deleteTransfer);
 
+router.get("/available-stocks", adminController.getAvailableStocks);
+
+router.get("/serials/:productName", adminController.getSerialsByProduct);
+
+router.route("/sales-party")
+.post(adminController.createSalesParty)
+.get(adminController.getAllSaleParties);
+
+router.route("/sales-party/:id")
+.get(adminController.getSalesPartyById)
+.put(adminController.updateSalesParty)
+.delete(adminController.deleteSalesParty);
+
+router.get("/sales-party-by-name/:name", adminController.getSalesPartyByName);
+
 export default router;

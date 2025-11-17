@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
 
-const partySchema = new mongoose.Schema(
-   {
+
+const salePartySchema = new mongoose.Schema(
+  {
     partyName: { type: String, required: true },
     phoneNumber: { type: String },
     email: { type: String },
@@ -14,4 +15,4 @@ const partySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default partySchema;
+export default salePartySchema;

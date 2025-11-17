@@ -22,4 +22,4 @@ const branchSchema = new Schema(
   { timestamps: true }
 );
 
-export default model("MTBranch", branchSchema);
+export default branchSchema;

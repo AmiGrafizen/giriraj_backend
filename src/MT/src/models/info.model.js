@@ -27,4 +27,4 @@
     image: { type: String }
   });
 
-export default model('MTInfo', infoSchema);
+export default infoSchema;

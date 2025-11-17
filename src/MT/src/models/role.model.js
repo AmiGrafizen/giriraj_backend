@@ -10,4 +10,4 @@ const roleSchema = new Schema(
   { timestamps: true }
 );
 
-export default model("MTRole", roleSchema);
+export default roleSchema;

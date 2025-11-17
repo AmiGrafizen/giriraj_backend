@@ -41,4 +41,4 @@ itemSchema.pre("save", async function (next) {
   next();
 });
 
-export default mongoose.model("MTItem", itemSchema);
+export default itemSchema;

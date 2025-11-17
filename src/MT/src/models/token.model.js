@@ -16,6 +16,6 @@ const tokenSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-export default mongoose.model('MTToken', tokenSchema);
+export default tokenSchema;
 
 

@@ -651,9 +651,120 @@ const updateTransfer = async (req, res) => {
   }
 };
 
+const getAvailableStocks = async (req, res) => {
+  try {
+    const stocks = await adminService.getAvailableStocksService();
+    res.status(200).json(stocks);
+  } catch (error) {
+    console.error("Error fetching available stocks:", error);
+    res.status(500).json({ message: "Failed to fetch stock data" });
+  }
+};
+
+const getSerialsByProduct = async (req, res) => {
+  try {
+    const { productName } = req.params;
+    const serials = await adminService.getSerialsByProductService(productName);
+    res.status(200).json(serials);
+  } catch (error) {
+    console.error("Error fetching serial numbers:", error);
+    res.status(500).json({ message: "Failed to fetch serial numbers" });
+  }
+};
+
+const createSalesParty = async (req, res) => {
+  try {
+    const party = await adminService.createSalesParty(req.body);
+    return sendSuccessResponse(res, "create", party);
+  } catch (err) {
+    res.status(httpStatus.BAD_REQUEST).json({ error: err.message });
+  }
+};
+
+const getAllSaleParties = async (req, res) => {
+  try {
+    const parties = await adminService.getSalesParties();
+    return sendSuccessResponse(res, "get", parties);
+  } catch (err) {
+    res.status(httpStatus.INTERNAL_SERVER_ERROR).json({ error: err.message });
+  }
+};
+
+const getSalesPartyById = async (req, res) => {
+  try {
+    const party = await adminService.getSalesPartyById(req.params.id);
+    if (!party)
+      return res
+        .status(httpStatus.NOT_FOUND)
+        .json({ error: "Party not found" });
+
+    return sendSuccessResponse(res, "get", party);
+  } catch (err) {
+    res.status(httpStatus.BAD_REQUEST).json({ error: err.message });
+  }
+};
+
+const getSalesPartyByName = async (req, res) => {
+  try {
+    const { name } = req.params;
+    if (!name) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        status: httpStatus.BAD_REQUEST,
+        message: "Party name is required",
+      });
+    }
+
+    const party = await adminService.getSalesPartyByNameService(name);
+    if (!party) {
+      return res.status(httpStatus.NOT_FOUND).json({
+        status: httpStatus.NOT_FOUND,
+        message: "Party not found",
+      });
+    }
+
+    return sendSuccessResponse(res, "get", party);
+  } catch (error) {
+    return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+      status: httpStatus.INTERNAL_SERVER_ERROR,
+      message: error.message || "Failed to fetch party",
+    });
+  }
+};
+
+
+const updateSalesParty = async (req, res) => {
+  try {
+    const updated = await adminService.updateSalesParty(req.params.id, req.body);
+    if (!updated)
+      return res
+        .status(httpStatus.NOT_FOUND)
+        .json({ error: "Party not found" });
+
+    return sendSuccessResponse(res, "update", updated);
+  } catch (err) {
+    res.status(httpStatus.BAD_REQUEST).json({ error: err.message });
+  }
+};
+
+const deleteSalesParty = async (req, res) => {
+  try {
+    const deleted = await adminService.deleteSalesParty(req.params.id);
+    if (!deleted)
+      return res
+        .status(httpStatus.NOT_FOUND)
+        .json({ error: "Party not found" });
+
+    return sendSuccessResponse(res, "delete", null);
+  } catch (err) {
+    res.status(httpStatus.BAD_REQUEST).json({ error: err.message });
+  }
+};
+
+
 export default {
   createParty, getPartyById, getPartyByName, updateParty, deleteParty, getAllParties, createPurchase, getAllPurchases, getPurchaseById, updatePurchase, deletePurchase,
   createSale, getAllSales, getSaleById, updateSale, deleteSale, createItem, getAllItems, getItemById, updateItem, deleteItem, getSalePurchaseByParty, createInfo, getAllInfo, getInfoById,
   getInfoByUserId, updateInfo, deleteInfo, createRole, getAllRoles, getRoleById, updateRole, deleteRole, createRoleUser, getAllRoleUsers, getRoleUserById, getRoleUsersByRole, updateRoleUser,
   deleteRoleUser, createBranch, getAllBranches, getBranchById, updateBranch, deleteBranch, getBranchesByCompany, createTransfer, getTransferById, getTransfers, deleteTransfer, updateTransfer,
+  getAvailableStocks, getSerialsByProduct, createSalesParty, getSalesPartyById, getSalesPartyByName, getAllSaleParties, updateSalesParty, deleteSalesParty,
 }

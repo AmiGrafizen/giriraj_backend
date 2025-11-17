@@ -3,7 +3,6 @@ import httpStatus from 'http-status';
 import catchAsync from "../utils/catchAsync.js";
 import { ApiError } from "../../../utils/ApiError.js";
 import tokenService from "../services/token.service.js";
-import { girirajModels } from "../db/giriraj.db.js";
 
 
 const createIPDPatient = catchAsync (async (req, res) => {

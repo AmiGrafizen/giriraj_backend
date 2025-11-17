@@ -11,4 +11,4 @@ const roleUserSchema = new Schema(
   { timestamps: true }
 );
 
-export default model("MTRoleUser", roleUserSchema);
+export default roleUserSchema;

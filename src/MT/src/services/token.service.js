@@ -5,7 +5,7 @@ import moment from 'moment';
 // import { getUserByEmail } from './user.service';
 // import ApiError from '../utils/ApiError';
 import  tokenTypes  from '../config/tokens.js';
-import tokenModel from '../models/token.model.js';
+import { mtModels } from '../db/index.js';
 const { sign, verify } = jwt;
 /**
  * Generate token
@@ -38,7 +38,7 @@ const generateToken = (user, expires, type, secret = process.env.ACCESS_TOKEN_SE
  * @returns {Promise<Token>}
  */
 const saveToken = async (token, userId, expires, type, blacklisted = false) => {
-  const tokenDoc = await tokenModel.create({
+  const tokenDoc = await mtModels?.MTToken.create({
     token,
     userId,
     expiry: expires.toDate(),
@@ -57,7 +57,7 @@ const saveToken = async (token, userId, expires, type, blacklisted = false) => {
  */
 const verifyToken = async (token, type) => {
   const payload = verify(token, process.env.ACCESS_TOKEN_SECRET);
-  const tokenDoc = await tokenModel.findOne({ token, type, user: payload.sub, blacklisted: false });
+  const tokenDoc = await mtModels?.MTToken?.findOne({ token, type, user: payload.sub, blacklisted: false });
   if (!tokenDoc) {
     throw new Error('Token not found');
   }

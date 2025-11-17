@@ -42,4 +42,4 @@ transferSchema.pre("save", function (next) {
   next();
 });
 
-export default mongoose.model("MTTransfer", transferSchema);
+export default transferSchema;

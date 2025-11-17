@@ -3,7 +3,7 @@ import Counter from "./counter.model.js";
 
 const itemSchema = new mongoose.Schema({
   itemName: { type: String, required: true },
-  serialNo: { type: String },
+  serialNumbers: [{ type: String }],
   modelNo: { type: String },
   qty: { type: Number, required: true, default: 1 },
   unit: { type: String, default: "NONE" },
@@ -24,7 +24,7 @@ const saleSchema = new mongoose.Schema(
   {
     partyId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "MTParty",
+      ref: "MTSalesParty",
       required: true,
     },
     billNumber: { type: String },
@@ -75,4 +75,4 @@ saleSchema.pre("save", async function (next) {
   }
 });
 
-export default mongoose.model("MTSale", saleSchema);
+export default saleSchema;

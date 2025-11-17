@@ -1,16 +1,16 @@
-import userModel from '../models/user.model.js'
+import { mtModels } from '../db/index.js';
 
 
 const getUserByEmail = async (email) => {
-    return userModel.findOne({ email });
+    return mtModels?.MTUser?.findOne({ email });
   };
 
 const getUserByName = async (name) => {
-    return userModel.findOne({ name });
+    return mtModels?.MTUser?.findOne({ name });
   };
 
   const getUserById = async (id) => {
-      return userModel.findById(id);
+      return mtModels?.MTUser?.findById(id);
     };
 
 

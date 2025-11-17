@@ -40,7 +40,7 @@ const createNewUser = async ({ name, email, mobileNumber, role, password }) => {
     email,
     mobileNumber,
     role,
-    password, // ✅ include password
+    password, 
   });
 
   await newUser.save();
@@ -56,8 +56,6 @@ const createNewUser = async ({ name, email, mobileNumber, role, password }) => {
     },
   };
 };
-
-
 
  const findUserByMobileNumber = async (mobileNumber) => {
   return await girirajModels?.GIRIRAJUser.findOne({ mobileNumber }); 
