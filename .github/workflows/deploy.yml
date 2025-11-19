@@ -1,48 +1,89 @@
-name: Deploy to backend.feedbacks.live
+# name: Deploy to backend.feedbacks.live
+
+# on:
+#   push:
+#     branches:
+#       - main    # change if your branch name is "master"
+
+# jobs:
+#   build-and-deploy:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       # Step 1: Checkout the latest code from the repo
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
+
+#       # Step 2: Setup Node.js (only if your backend uses Node)
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 18
+
+#       # Step 3: Install dependencies & build (ignore dependency conflicts)
+#       - name: Install dependencies & Build
+#         run: |
+#           npm install --legacy-peer-deps
+#           npm run build || echo "No build step found"
+
+#       # Step 4: Deploy the files to your hosting account via FTP
+#       - name: FTP Deploy to backend.feedbacks.live
+#         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+#         with:
+#           server: ${{ secrets.FTP_HOST }}
+#           username: ${{ secrets.FTP_USERNAME }}
+#           password: ${{ secrets.FTP_PASSWORD }}
+#           protocol: ftp
+#           port: 21
+#           server-dir: /domains/backend.feedbacks.live/public_html/
+#           local-dir: ./      # or ./build/ or ./dist/ depending on your project
+#           exclude: |
+#             **/node_modules/**
+#             **/.git*
+#             **/.github/**
+#             **/.env
+#             **/README.md
+#             **/package*.json
+#             **/uploads/**
+#             **/logs/**
+
+
+name: Deploy Backend to Hostinger VPS
 
 on:
   push:
     branches:
-      - main    # change if your branch name is "master"
+      - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the latest code from the repo
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      # Step 2: Setup Node.js (only if your backend uses Node)
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      # Step 3: Install dependencies & build (ignore dependency conflicts)
-      - name: Install dependencies & Build
+      - name: Setup SSH Key
         run: |
-          npm install --legacy-peer-deps
-          npm run build || echo "No build step found"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
-      # Step 4: Deploy the files to your hosting account via FTP
-      - name: FTP Deploy to backend.feedbacks.live
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          protocol: ftp
-          port: 21
-          server-dir: /domains/backend.feedbacks.live/public_html/
-          local-dir: ./      # or ./build/ or ./dist/ depending on your project
-          exclude: |
-            **/node_modules/**
-            **/.git*
-            **/.github/**
-            **/.env
-            **/README.md
-            **/package*.json
-            **/uploads/**
-            **/logs/**
+      - name: Upload Files to VPS
+        run: |
+          rsync -avz --delete \
+            --exclude='.env' \
+            --exclude='node_modules' \
+            -e "ssh -i ~/.ssh/id_rsa -p ${{ secrets.VPS_PORT }}" \
+            ./ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:${{ secrets.PROJECT_PATH }}
+
+      - name: Install Dependencies + Restart PM2
+        run: |
+          ssh -i ~/.ssh/id_rsa -p ${{ secrets.VPS_PORT }} ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+            cd ${{ secrets.PROJECT_PATH }}
+            npm install --production
+            pm2 restart backend || pm2 start src/index.js --name backend
+            pm2 save
+          EOF

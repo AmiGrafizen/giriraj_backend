@@ -1,456 +1,1555 @@
-import { diskStorage } from "multer";
 import adminService from "../services/admin.service.js";
-import { generateSuccessMessage, sendSuccessResponse } from "../utils/ApiMessage.js";
+import httpStatus from 'http-status';
 import catchAsync from "../utils/catchAsync.js";
-import httpStatus from "http-status"
+import { ApiError } from "../utils/ApiError.js";
+import tokenService from "../services/token.service.js";
+import { girirajModels } from "../db/index.js";
 
 
-const createOurServices  = catchAsync(async (req, res) => {
-    const services = await adminService.createOurServices(req.body);
-    sendSuccessResponse(res, 'post', services)  
+const createIPDPatient = catchAsync (async (req, res) => {
+    const patient = await adminService.createIPDPatient(req.body);
+    res.status(httpStatus.CREATED).json({
+      status: true,
+      message: 'Patient registered successfully',
+      data: patient
+    });
 });
 
-const getOurServices  = catchAsync(async (req, res) => {
-    const services = await adminService.getOurServices(req.body);
-    sendSuccessResponse(res, 'get', services)
-});
 
-const updateOurServices = catchAsync(async (req, res) => {
-    const services = await adminService.getOurServices(req.params.id, req.body);
-    sendSuccessResponse(res, 'put', services)
-  });
-
-const deleteOurService = catchAsync(async (req, res) => {
-    const services = await adminService.deleteOurService(req.params.id);
-    sendSuccessResponse(res, 'delete', services)
-  });
-
-const createAboutUsMainPage  = catchAsync(async (req, res) => {
-    const AboutUsMainPage = await adminService.createAboutUsMainPage(req.body);
-    sendSuccessResponse(res, 'post', AboutUsMainPage)
-  });
-
-const getAboutUsMainPage  = catchAsync(async (req, res) => {
-    const AboutUsMainPage = await adminService.getAboutUsMainPage(req.body);
-    sendSuccessResponse(res, 'get', AboutUsMainPage)
-  });
-
-const updateAboutUsMainPage  = catchAsync(async (req, res) => {
-    const AboutUsMainPage = await adminService.updateAboutUsMainPage(req.params.id, req.body);
-    sendSuccessResponse(res, 'put', AboutUsMainPage)
-  });
-
-const deleteAboutUsMainPage   = catchAsync(async (req, res) => {
-    const category = await adminService.deleteAboutUsMainPage(req.params.id);
-    sendSuccessResponse(res, 'delete', AboutUsMainPage)
-  });
-
-const createCategory  = catchAsync(async (req, res) => {
-    const category = await adminService.createCategory(req.body);
-    res.status(httpStatus.CREATED).send({ category });
-  });
-
-const getCategories   = catchAsync(async (req, res) => {
-    const category = await adminService.getCategories(req.body);
-    res.status(httpStatus.OK).send({ category });
-  });
-
-const updateCategory  = catchAsync(async (req, res) => {
-    const category = await adminService.updateCategory(req.params.id, req.body);
-    res.status(httpStatus.OK).send({ category });
-  });
-
-const deleteCategory   = catchAsync(async (req, res) => {
-    const category = await adminService.deleteCategory(req.params.id);
-    res.status(httpStatus.OK).send({ category });
-  });
-
-const createSubCategory  = catchAsync(async (req, res) => {
-    const category = await adminService.createSubCategory(req.body);
-    res.status(httpStatus.CREATED).send({ category });
-  });
-
-const getSubCategories   = catchAsync(async (req, res) => {
-    const category = await adminService.getSubCategories(req.body);
-    res.status(httpStatus.OK).send({ category });
-  });
-
-const getSubCategoryByCategoryId = catchAsync(async (req, res) => {
-  const category = await adminService.getSubCategoryByCategoryId(req.params.id, req.body);
-  res.status(httpStatus.OK).send({ category });
-});
-
-const updateSubCategory  = catchAsync(async (req, res) => {
-    const category = await adminService.updateSubCategory(req.params.id, req.body);
-    res.status(httpStatus.OK).send({ category });
-  });
-
-const deleteSubCategory   = catchAsync(async (req, res) => {
-    const category = await adminService.deleteSubCategory(req.params.id);
-    res.status(httpStatus.OK).send({ category , Message:"Delete SuccessFully...!"});
-  });
-
-const createProduct  = catchAsync(async (req, res) => {
-    const product = await adminService.createProduct(req.body);
-    res.status(httpStatus.CREATED).send({ product });
-  });
-
-const getProducts  = catchAsync(async (req, res) => {
-    const product = await adminService.getProducts(req.query);
-    res.status(httpStatus.OK).send({ product });
-  });
-
-const updateProduct = catchAsync(async (req, res) => {
-    const product = await adminService.updateProduct(req.params.id, req.body);
-    res.status(httpStatus.OK).send({ product });
-  });
-
-const deleteProduct = catchAsync(async (req, res) => {
-    const product = await adminService.deleteProduct(req.params.id);
-    res.status(httpStatus.OK).send({ product});
-  });
-
-const getProductsByCategoryId = catchAsync(async (req, res) => {
-    const product = await adminService.getProductsByCategoryId(req.params.id);
-    res.status(httpStatus.OK).send({ product });
-  });
-
-// const getRelatedProduct = catchAsync(async (req, res) => {
-//   const {productId} = req.params;
-//   const {product, relatedProducts} = await adminService.getRelatedProduct(productId);
-//   res.status(httpStatus.OK).send({ product, relatedProducts });
-// });
-
-const getFeaturedProducts = catchAsync(async (req, res) => {
-  const products = await adminService.getFeaturedProducts(); 
-  res.status(httpStatus.OK).send({
-      success: true,
-      message: 'Featured products fetched successfully',
-      data: products
+ const getIPDPatients = catchAsync(async (req, res) => {
+  const patients = await adminService.getIPDPatients(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
   });
 });
 
-const createCoreValues = catchAsync(async (req, res) => {
-  const coreValues = await adminService.createCoreValues(req.body);
-  sendSuccessResponse(res, 'post', coreValues)
+const getIPDPatientById = catchAsync(async (req, res) => {
+  console.log('req.params.id', req.params.id)
+  const patient = await adminService.getIPDPatientById(req.params.id);
+  console.log('patient', patient)
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
 });
 
-const getCoreValues = catchAsync(async (req, res) => {
-  const coreValues = await adminService.getCoreValues(req.body);
-  sendSuccessResponse(res, 'get', coreValues)
-})
-
-const updateCoreValues = catchAsync(async (req, res) => {
-  const coreValues = await adminService.updateCoreValues(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', coreValues)
+const updateIPDPatientById = catchAsync(async (req, res) => {
+  const updatedPatient = await adminService.updateIPDPatientById(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient updated successfully',
+    data: updatedPatient,
+  });
 });
 
-const deleteCoreValues = catchAsync(async (req, res) => {
-  const coreValues = await adminService.deleteCoreValues(req.params.id);
-  sendSuccessResponse(res, 'delete', coreValues)
-});
-
-const getOrderList = catchAsync(async (req, res) => {
-  const {status} = req.query
-  const orderList = await adminService.getOrderList(status);
-  res.status(httpStatus.OK).send({ orderList });
-});
-
-const getOrderById = catchAsync(async (req, res) => {
-  const order = await adminService.getOrderById(req.params.id);
-  res.status(httpStatus.OK).send({ order });
-})
-
-const createVisionAndMission = catchAsync(async (req, res) => {
-  const visionAndMission = await adminService.createVisionAndMission(req.body);
-  sendSuccessResponse(res, 'post', visionAndMission)
-});
-
-const getVisionAndMission = catchAsync(async (req, res) => {
-  const visionAndMission = await adminService.getVisionAndMission(req.body);
-  sendSuccessResponse(res, 'get', visionAndMission)
-})
-
-const updateVisionAndMission = catchAsync(async (req, res) => {
-  const visionAndMission = await adminService.updateVisionAndMission(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', visionAndMission)
-});
-
-const deleteVisionAndMission = catchAsync(async (req, res) => {
-  const visionAndMission = await adminService.deleteVisionAndMission(req.params.id);
-  sendSuccessResponse(res, 'delete', visionAndMission)
-});
-
-const createWhyChooseUs = catchAsync(async (req, res) => {
-  const chooseUsData = await adminService.createWhyChooseUs(req.body);
-  sendSuccessResponse(res, 'post', chooseUsData)
-});
-
-const getWhyChooseUs = catchAsync(async (req, res) => {
-  const chooseUsData = await adminService.getWhyChooseUs(req.body);
-  sendSuccessResponse(res, 'get', chooseUsData)
-})
-
-const updateWhyChooseUs = catchAsync(async (req, res) => {
-  const chooseUsData = await adminService.updateWhyChooseUs(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', chooseUsData)
-});
-
-const deleteWhyChooseUs = catchAsync(async (req, res) => {
-  const chooseUsData = await adminService.deleteWhyChooseUs(req.params.id);
-  sendSuccessResponse(res, 'delete', chooseUsData)
+const deleteIPDPatientById = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteIPDPatientById(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.NO_CONTENT).send();
 });
 
 
-const createFaq = catchAsync(async (req, res) => {
-  const faq = await adminService.createFaq(req.body);
-  sendSuccessResponse(res, 'get', faq)
-});
-
-const getFaqs = catchAsync(async (req, res) => {
-  const faqs = await adminService.getFaqs(req.body);
-  sendSuccessResponse(res, 'get', faqs)
-});
-
-const updateFaq = catchAsync(async (req, res) => {
-  const faq = await adminService.updateFaq(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', faq)
-});
-
-const deleteFaq = catchAsync(async (req, res) => {
-  const faq = await adminService.deleteFaq(req.params.id);
-  sendSuccessResponse(res, 'delete', faq)
-});
-
-const createFeedback  = catchAsync(async (req, res) => {
-  const testimonial = await adminService.createFeedback(req.body);
-  sendSuccessResponse(res, 'post', testimonial)
-});
-
-const getFeedbacks  = catchAsync(async (req, res) => {
-  const testimonial = await adminService.getFeedbacks(req.body);
-  sendSuccessResponse(res, 'get', testimonial)
-});
-
-const updateFeedback = catchAsync(async (req, res) => {
-  const testimonial = await adminService.updateFeedback(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', testimonial)
-});
-
-const deleteFeedback = catchAsync(async (req, res) => {
-  const testimonial = await adminService.deleteFeedback(req.params.id);
-  sendSuccessResponse(res, 'delete', testimonial)
-});
-
-const createTeam  = catchAsync(async (req, res) => {
-  const team = await adminService.createTeam(req.body);
-  sendSuccessResponse(res, 'post', team)
-});
-
-const getTeam  = catchAsync(async (req, res) => {
-  const team = await adminService.getTeam(req.body);
-  sendSuccessResponse(res, 'get', team)
-});
-
-const getTeamById  = catchAsync(async (req, res) => {
-  const team = await adminService.getTeamById(req.params.id);
-  sendSuccessResponse(res, 'get', team)
-});
-
-const updateTeam = catchAsync(async (req, res) => {
-  const team = await adminService.updateTeam(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', team)
-});
-
-const deleteTeam = catchAsync(async (req, res) => {
-  const team = await adminService.deleteTeam(req.params.id);
-  sendSuccessResponse(res, 'delete', team)
-});
-
-const createCompanyInfo = catchAsync(async (req, res) => {
-  const infoData = await adminService.createCompanyInfo(req.body);
-  sendSuccessResponse(res, 'post', infoData)
-});
-
-const getCompanyInfo = catchAsync(async (req, res) => {
-  const infoData = await adminService.getCompanyInfo(req.body);
-  sendSuccessResponse(res, 'get', infoData)
-})
-
-const updateCompanyInfo = catchAsync(async (req, res) => {
-  const infoData = await adminService.updateCompanyInfo(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', infoData)
-});
-
-const deleteCompanyInfo = catchAsync(async (req, res) => {
-  const infoData = await adminService.deleteCompanyInfo(req.params.id);
-  sendSuccessResponse(res, 'delete', deleteCompanyInfo)
+const createOPDPatient = catchAsync (async (req, res) => {
+    const patient = await adminService.createOPDPatient(req.body);
+    res.status(httpStatus.CREATED).json({
+      status: true,
+      message: 'Patient registered successfully',
+      data: patient
+    });
 });
 
 
-
-const addAboutUsPage = catchAsync(async (req, res) => {
-  const AboutUs = await adminService.createAboutUsPage(req.body);
-  res.status(httpStatus.CREATED).send({ AboutUs });
+ const getOPDPatients = catchAsync(async (req, res) => {
+  const patients = await adminService.getOPDPatients(req.body);
+  console.log('patients', patients)
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
 });
 
-const getAboutUsPage = catchAsync(async (req, res) => {
-  const AboutUs = await adminService.getAboutUsPage(req.body);
-  res.status(httpStatus.OK).send({ AboutUs });
-});
-const getAboutUsById = catchAsync(async (req, res) => {
-  const AboutUs = await adminService.getAboutUsById(req.params.id);
-  res.status(httpStatus.OK).send({ AboutUs });
-});
-
-const updateAboutUsPage = catchAsync(async (req, res) => {
-  const AboutUs = await adminService.updateAboutUsPage(req.params.id, req.body);
-  res.status(httpStatus.OK).send({ AboutUs });
+const getOPDPatientById = catchAsync(async (req, res) => {
+  const patient = await adminService.getOPDPatientById(req.params.id);
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
 });
 
-const deleteAboutUsPage = catchAsync(async (req, res) => {
-  const AboutUs = await adminService.deleteAboutUsPage(req.params.id);
-  res.status(httpStatus.OK).send({ AboutUs });
+const updateOPDPatientById = catchAsync(async (req, res) => {
+  const updatedPatient = await adminService.updateOPDPatientById(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient updated successfully',
+    data: updatedPatient,
+  });
+});
+
+const deleteOPDPatientById = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteOPDPatientById(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.NO_CONTENT).send();
 });
 
 
-const addBlog = catchAsync(async (req, res) => {
-  const blog = await adminService.createBlog(req.body);
-  res.status(httpStatus.CREATED).send({ blog });
+const createComplaint = catchAsync (async (req, res) => {
+    const patient = await adminService.createComplaint(req.body);
+    res.status(httpStatus.CREATED).json({
+      status: true,
+      message: 'Patient registered successfully',
+      data: patient
+    });
 });
 
-const getBlog = catchAsync(async (req, res) => {
-  const blog = await adminService.getBlog(req.body);
-  res.status(httpStatus.OK).send({ blog });
+
+ const getAllComplaints = catchAsync(async (req, res) => {
+  const patients = await adminService.getAllComplaints(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
 });
 
-const updateBlog = catchAsync(async (req, res) => {
-  const blog = await adminService.updateBlog(req.params.id, req.body);
-  res.status(httpStatus.OK).send({ blog });
+const getComplaintById = catchAsync(async (req, res) => {
+  const patient = await adminService.getComplaintById(req.params.id);
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
 });
 
-const deleteBlog = catchAsync(async (req, res) => {
-  const blog = await adminService.deleteBlog(req.params.id);
-  res.status(httpStatus.OK).send({ blog });
+const updateComplaint = catchAsync(async (req, res) => {
+  const updatedPatient = await adminService.updateComplaint(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient updated successfully',
+    data: updatedPatient,
+  });
 });
 
-const createWhatWeOffer = catchAsync(async (req, res) => {
-  const WhatWeOffer = await adminService.createWhatWeOffer(req.body);
-  sendSuccessResponse(res, 'post', WhatWeOffer)
+
+ const getComplaintStatsByDepartment = catchAsync(async (req, res) => {
+  const patients = await adminService.getComplaintStatsByDepartment(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
 });
 
-const getWhatWeOffer = catchAsync(async (req, res) => {
-  const WhatWeOffer = await adminService.getWhatWeOffer(req.body);
-  sendSuccessResponse(res, 'get', WhatWeOffer)
+ const getIPDPatientByRating = catchAsync(async (req, res) => {
+  const patients = await adminService.getIPDPatientByRating(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
 });
 
-const updateWhatWeOffer = catchAsync(async (req, res) => {
-  const WhatWeOffer = await adminService.updateWhatWeOffer(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', WhatWeOffer)
+ const getOPDPatientByRating = catchAsync(async (req, res) => {
+  const patients = await adminService.getOPDPatientByRating(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
 });
 
-const deleteWhatWeOffer = catchAsync(async (req, res) => {
-  const WhatWeOffer = await adminService.deleteWhatWeOffer(req.params.id);
-  sendSuccessResponse(res, 'delete', WhatWeOffer)
+const createRole = catchAsync(async (req, res) => {
+  const role = await adminService.createRole(req.body);
+  res.status(httpStatus.CREATED).send({ role });
 });
 
-const createVision = catchAsync(async (req, res) => {
-  const vision = await adminService.createVision(req.body);
-  sendSuccessResponse(res, 'post', vision)
+const getAllRoles = catchAsync(async (req, res) => {
+  const role = await adminService.getAllRoles(req.body);
+  res.status(httpStatus.OK).send({ role });
+});
+const getRoleById = catchAsync(async (req, res) => {
+  const role = await adminService.getRoleById(req.params.id);
+  res.status(httpStatus.OK).send({ role });
 });
 
-const getVision = catchAsync(async (req, res) => {
-  const vision = await adminService.getVision(req.body);
-  sendSuccessResponse(res, 'get', vision)
+const updateRole = catchAsync(async (req, res) => {
+  const role = await adminService.updateRole(req.params.id, req.body);
+  res.status(httpStatus.OK).send({ role });
 });
 
-const updateVision = catchAsync(async (req, res) => {
-  const vision = await adminService.updateVision(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', vision)
+const deleteRole = catchAsync(async (req, res) => {
+  const role = await adminService.deleteRole(req.params.id);
+  res.status(httpStatus.OK).send({ role });
 });
 
-const deleteVision = catchAsync(async (req, res) => {
-  const vision = await adminService.deleteVision(req.params.id);
-  sendSuccessResponse(res, 'delete', vision)
+const createRoleUser = catchAsync(async (req, res) => {
+  const roleUser = await adminService.createRoleUser(req.body);
+  res.status(httpStatus.CREATED).send({ roleUser });
 });
 
-const createMission = catchAsync(async (req, res) => {
-  const mission = await adminService.createMission(req.body);
-  sendSuccessResponse(res, 'post', mission)
+const getAllRoleUsers = catchAsync(async (req, res) => {
+  const roleUser = await adminService.getAllRoleUsers(req.body);
+  res.status(httpStatus.OK).send({ roleUser });
+});
+const getRoleUserById = catchAsync(async (req, res) => {
+  const roleUser = await adminService.getRoleUserById(req.params.id);
+  res.status(httpStatus.OK).send({ roleUser });
 });
 
-const getMission = catchAsync(async (req, res) => {
-  const mission = await adminService.getMission(req.body);
-  sendSuccessResponse(res, 'get', mission)
+const updateRoleUser = catchAsync(async (req, res) => {
+  const roleUser = await adminService.updateRoleUser(req.params.id, req.body);
+  res.status(httpStatus.OK).send({ roleUser });
 });
 
-const updateMission = catchAsync(async (req, res) => {
-  const mission = await adminService.updateMission(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', mission)
+const deleteRoleUser = catchAsync(async (req, res) => {
+  const roleUser = await adminService.deleteRoleUser(req.params.id);
+  res.status(httpStatus.OK).send({ roleUser });
 });
 
-const deleteMission = catchAsync(async (req, res) => {
-  const mission = await adminService.deleteMission(req.params.id);
-  sendSuccessResponse(res, 'delete', mission)
+const getDashboard = catchAsync(async (req, res) => {
+  const { from, to, loginType, modules } = req.query || {};
+  const range = {};
+  if (from) range.from = new Date(from);
+  if (to) range.to = new Date(to);
+
+  const allowedModules = modules ? modules.split(",") : [];
+
+  const data = await adminService.getDashboard({
+    from: range.from,
+    to: range.to,
+    modules: allowedModules,
+    loginType, // 👈 pass loginType
+  });
+
+  return res.status(httpStatus.OK).json({
+    success: true,
+    data,
+  });
 });
 
-const createCoreValuesMain = catchAsync(async (req, res) => {
-  const coreValuesMain = await adminService.createCoreValuesMain(req.body);
-  sendSuccessResponse(res, 'post', coreValuesMain)
+
+const createIPDConcern = catchAsync (async (req, res) => {
+    const patient = await adminService.createIPDConcern(req.body);
+    res.status(httpStatus.CREATED).json({
+      status: true,
+      message: 'Patient registered successfully',
+      data: patient
+    });
 });
 
-const getCoreValuesMain  = catchAsync(async (req, res) => {
-  const coreValuesMain = await adminService.getCoreValuesMain (req.body);
-  sendSuccessResponse(res, 'get', coreValuesMain)
+
+ const getIPDConcern = catchAsync(async (req, res) => {
+  const patients = await adminService.getIPDConcern(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
 });
 
-const updateCoreValuesMain = catchAsync(async (req, res) => {
-  const coreValuesMain = await adminService.updateCoreValuesMain(req.params.id, req.body);
-  sendSuccessResponse(res, 'put', coreValuesMain)
+const getIPDPaConcernById = catchAsync(async (req, res) => {
+  const patient = await adminService.getIPDPaConcernById(req.params.id);
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
 });
 
-const deleteCoreValuesMain = catchAsync(async (req, res) => {
-  const coreValuesMain = await adminService.deleteCoreValuesMain(req.params.id);
-  sendSuccessResponse(res, 'delete', coreValuesMain)
+const updateIPDConcernById = catchAsync(async (req, res) => {
+  const updatedPatient = await adminService.updateIPDConcernById(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient updated successfully',
+    data: updatedPatient,
+  });
 });
 
-const addHeroImage = catchAsync(async (req, res) => {
-  const heroImage = await adminService.createBanner(req.body);
-  sendSuccessResponse(res, 'create', heroImage);
+const deleteIPDConcernById = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteIPDConcernById(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.NO_CONTENT).send();
 });
 
-const getHeroImage  = catchAsync(async (req, res) => {
-  const heroImage = await adminService.getBanner (req.body);
-  sendSuccessResponse(res, 'get', heroImage)
-});
-
-const updateHeroImage = catchAsync(async (req, res) => {
-  const heroImage = await adminService.updateBanner(req.params.id, req.body);
-  sendSuccessResponse(res, 'update', heroImage)
-});
-
-const deleteHeroImage = catchAsync(async (req, res) => {
-  const heroImage = await adminService.deleteBanner(req.params.id);
-  sendSuccessResponse(res, 'delete', heroImage)
-});
-
-const getContacts = async (req, res) => {
+const forwardConcern = async (req, res) => {
   try {
-    const contacts = await adminService.getAllContacts();
-    res.status(200).json({ contacts });
+    const { department, topic, text, attachments, mode, note } = req.body;
+    const concernId = req.params.id;
+    const userId = req.user?._id; // ✅ capture the user who forwards
+
+    const updatedConcern = await adminService.forwardConcernToDepartment(
+      concernId,
+      department,
+      {
+        topic,
+        text,
+        attachments,
+        mode,
+        note, // ✅ include note for forward history
+      },
+      userId // ✅ pass userId into service
+    );
+
+    res.json({
+      message: `Concern forwarded to ${department}`,
+      concern: updatedConcern,
+    });
   } catch (error) {
-    res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    console.error("Error forwarding concern:", error);
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const fetchConcernsByDepartment = async (req, res) => {
+  try {
+    const { department } = req.params;
+    const concerns = await adminService.getConcernsByDepartment(department);
+    res.json(concerns);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const escalateComplaint = async (req, res) => {
+  try {
+    const concernId = req.params.id;
+    const { level, note } = req.body;
+    const userId = req.user?._id; // assume user is from auth middleware
+
+    const updatedConcern = await adminService.escalateConcern(concernId, { level, note, userId });
+
+    res.json({
+      message: `Complaint escalated to ${level}`,
+      concern: updatedConcern,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const resolveComplaint = async (req, res) => {
+  try {
+    const concernId = req.params.id;
+    const { note, proof } = req.body;
+    const userId = req.user?._id; // from auth middleware
+
+    if (!note) {
+      return res.status(400).json({ error: "Resolution note is required" });
+    }
+
+    const updatedConcern = await adminService.resolveConcern(concernId, { note, proof, userId });
+
+    res.json({
+      message: "Complaint resolved successfully",
+      concern: updatedConcern,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const viewConcernHistory = async (req, res) => {
+  try {
+    const concernId = req.params.id;
+    const history = await adminService.getConcernHistory(concernId);
+
+    res.json({
+      concernId,
+      history,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// PUT /admin/update-progress/:id
+const updateProgressRemark = async (req, res) => {
+  try {
+    const concernId = req.params.id;           // ✅ take from URL param
+    const { updateNote } = req.body;
+    const userId = req.user?._id;              // ✅ authenticated user
+
+    if (!updateNote) {
+      return res.status(400).json({ error: "Progress remark is required" });
+    }
+
+    const updatedConcern = await adminService.updateProgressRemarkService(
+      concernId,
+      updateNote,
+      userId
+    );
+
+    if (!updatedConcern) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    res.status(200).json({
+      message: "Progress updated successfully",
+      data: updatedConcern,
+    });
+  } catch (error) {
+    console.error("Error updating progress remark:", error);
+    res.status(500).json({ message: "Error updating progress remark", error: error.message });
+  }
+};
+
+const createDoctor = catchAsync (async (req, res) => {
+    const patient = await adminService.createDoctor(req.body);
+    res.status(httpStatus.CREATED).json({
+      status: true,
+      message: 'Patient registered successfully',
+      data: patient
+    });
+});
+
+
+ const getDoctors = catchAsync(async (req, res) => {
+  const patients = await adminService.getDoctors(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
+});
+
+const getDoctorById = catchAsync(async (req, res) => {
+  const patient = await adminService.getDoctorById(req.params.id);
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
+});
+
+const updateDoctor = catchAsync(async (req, res) => {
+  const updatedPatient = await adminService.updateDoctor(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient updated successfully',
+    data: updatedPatient,
+  });
+});
+
+const deleteDoctor = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteDoctor(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.NO_CONTENT).send();
+});
+
+const saveTokenController = async (req, res) => {
+  try {
+    const { userId, token } = req.body;
+
+    if (!userId || !token) {
+      return res.status(400).json({ success: false, message: "Missing userId or token" });
+    }
+
+    const user = await tokenService.saveUserToken(userId, token);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.json({ success: true, message: "Token saved successfully", user });
+  } catch (error) {
+    console.error("Error saving token:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+ const getUserNotifications = catchAsync(async (req, res) => {
+  const notification = await adminService.getAllNotificationsService(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'notification fetched successfully',
+    notifications: notification,
+  });
+});
+
+async function getAllComplaintDetails(req, res) {
+  try {
+    const results = await adminService.getAllComplaintDetails();
+    res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+const createBed = catchAsync (async (req, res) => {
+    const bed = await adminService.createBed(req.body);
+    res.status(httpStatus.CREATED).json({
+      status: true,
+      message: 'Bed registered successfully',
+      data: bed
+    });
+});
+
+
+ const getBeds = catchAsync(async (req, res) => {
+  const beds = await adminService.getBeds(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Beds fetched successfully',
+    data: beds,
+  });
+});
+
+const getBedById = catchAsync(async (req, res) => {
+  const bed = await adminService.getBedById(req.params.id);
+  if (!bed) throw new ApiError(httpStatus.NOT_FOUND, 'Bed not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Bed fetched successfully',
+    data: bed,
+  });
+});
+
+const updatedBed = catchAsync(async (req, res) => {
+  const updatedBed = await adminService.updatedBed(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Bed updated successfully',
+    data: updatedBed,
+  });
+});
+
+const deleteBed = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteBed(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, 'Bed not found');
+  res.status(httpStatus.NO_CONTENT).send();
+});
+
+const validateBed = async (req, res) => {
+  try {
+    const bedNo = parseInt(req.params.bedNo, 10);
+    const result = await adminService.validateBedNumber(bedNo);
+
+    if (!result.valid) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error("Error validating bed:", err);
+    res.status(500).json({ valid: false, message: "Server error" });
+  }
+};
+
+const getComplaintsSummary = async (req, res) => {
+try {
+    const floorSummary = await adminService.getComplaintSummary();
+    res.json({ success: true, floorSummary });
+  } catch (err) {
+    console.error("Error in complaintSummary:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+}
+
+ async function getServiceSummaryController(req, res) {
+  try {
+    const summary = await adminService.getServiceWiseSummary();
+    res.json({ success: true, summary });
+  } catch (err) {
+    console.error("Error in service summary:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+}
+
+async function getFrequentRatings(req, res) {
+  try {
+    const result = await adminService.getFrequentRatingKeywords(6);
+    res.json({ keywords: result });
+  } catch (err) {
+    console.error("Error fetching frequent ratings", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+  const frequentOPDRatings = async (req, res) => {
+    try {
+      const keywords = await adminService.getFrequentOPDRatings();
+      res.json({ keywords });
+    } catch (err) {
+      console.error("Error fetching frequent OPD ratings:", err);
+      res.status(500).json({ message: "Failed to fetch frequent ratings" });
+    }
+  };
+
+export const partialResolveController = async (req, res) => {
+  try {
+    const { id } = req.params; // complaintId
+    const { department, note, proof, userId } = req.body;
+
+    // 🔒 Validation
+    if (!department || !note) {
+      return res.status(400).json({
+        success: false,
+        message: "Department and note are required.",
+      });
+    }
+
+    // 🧩 Call the service
+    const result = await adminService.partialResolveConcern(id, {
+      department,
+      note,
+      proof,
+      userId,
+    });
+
+    // ✅ Clean and unified response
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Partial resolve failed:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong while partially resolving the complaint.",
+    });
   }
 };
 
 
+const getPartialResolveDetailsController = async (req, res) => {
+  try {
+    const { concernId } = req.params;
+    const data = await adminService.getPartialResolveDetails(concernId);
 
-export default {createCategory,getCategories,updateCategory,deleteCategory,createSubCategory,getSubCategories,getSubCategoryByCategoryId,updateSubCategory,deleteSubCategory,
-  createProduct,getProducts,updateProduct,deleteProduct,getProductsByCategoryId, getFeaturedProducts, createAboutUsMainPage,updateAboutUsMainPage,deleteAboutUsMainPage,getAboutUsMainPage,
-createCoreValues, getCoreValues, updateCoreValues, deleteCoreValues,deleteOurService, updateOurServices,getOurServices,createOurServices,getOrderList,
-getOrderById, createVisionAndMission, getVisionAndMission, updateVisionAndMission, deleteVisionAndMission, createWhyChooseUs, getWhyChooseUs, updateWhyChooseUs, deleteWhyChooseUs,
-createFaq, getFaqs, updateFaq, deleteFaq, createFeedback, getFeedbacks, updateFeedback, deleteFeedback, createTeam, getTeam, getTeamById, updateTeam, deleteTeam,
-createCompanyInfo, getCompanyInfo, updateCompanyInfo, deleteCompanyInfo, addAboutUsPage, getAboutUsPage, getAboutUsById, updateAboutUsPage, deleteAboutUsPage,
-addBlog, getBlog, updateBlog, deleteBlog, createWhatWeOffer, getWhatWeOffer, updateWhatWeOffer, deleteWhatWeOffer, createVision, getVision, updateVision, deleteVision, getContacts,
-createMission, getMission, updateMission, deleteMission, createCoreValuesMain, getCoreValuesMain, updateCoreValuesMain, deleteCoreValuesMain, addHeroImage, getHeroImage, deleteHeroImage, updateHeroImage,
+    return res.status(200).json({
+      success: true,
+      message: "Partial resolve details fetched successfully.",
+      data,
+    });
+  } catch (error) {
+    console.error("Get Partial Resolve Details Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to load partial resolve details.",
+    });
+  }
+};
+
+const partialInProgressController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { department, note, userId } = req.body;
+
+    const result = await adminService.partialInProgressConcern(id, { department, note, userId });
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Partial InProgress Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const partialEscalateController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { department, note, level, userId } = req.body;
+
+    const result = await adminService.partialEscalateConcern(id, { department, note, level, userId });
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Partial Escalate Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const createNote = catchAsync(async (req, res) => {
+  try {
+    const { userId, title, content } = req.body;
+
+    if (!userId) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        success: false,
+        message: "userId is required",
+      });
+    }
+
+    // ✅ Auto-detect model type based on ID existence
+    let userModel = "GIRIRAJUser";
+    const isRoleUser = await girirajModels.GIRIRAJRoleUser.findById(userId);
+    if (isRoleUser) userModel = "GIRIRAJRoleUser";
+
+    const noteData = {
+      title: title?.trim() || "",
+      content: content?.trim() || "",
+      userId,
+      userModel,
+    };
+
+    console.log("🧩 Auto-detected model:", userModel);
+    console.log("📥 noteData received:", noteData);
+
+    const note = await adminService.createNote(noteData);
+    if (!note) {
+      return res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: "Note creation failed",
+      });
+    }
+
+    res.status(httpStatus.CREATED).json({
+      success: true,
+      message: "Note created successfully",
+      data: note,
+    });
+  } catch (error) {
+    console.error("❌ Error in createNote:", error);
+    res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Error creating note",
+      error: error.message,
+    });
+  }
+});
+
+
+
+ const getAllNotes = catchAsync(async (req, res) => {
+  const patients = await adminService.getAllNotes(req.body);
+  console.log('patients', patients)
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
+});
+
+const getNoteById = catchAsync(async (req, res) => {
+  const patient = await adminService.getNoteById(req.params.id);
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
+});
+
+const updateNote = catchAsync(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const updated = await girirajModels.GIRIRAJNote.findByIdAndUpdate(
+      id,
+      { $set: updateData }, // ✅ only update provided fields
+      { new: true, runValidators: true }
+    );
+
+    if (!updated) {
+      return res.status(httpStatus.NOT_FOUND).json({
+        success: false,
+        message: "Note not found",
+      });
+    }
+
+    res.status(httpStatus.OK).json({
+      success: true,
+      message: "Note updated successfully",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("❌ Error updating note:", error);
+    res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Error updating note",
+      error: error.message,
+    });
+  }
+});
+
+
+const deleteNote = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteNote(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.NO_CONTENT).send();
+});
+
+ const getNotesByUserId = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const notes = await adminService.getNotesByUserId(userId);
+
+    res.status(httpStatus.OK).json({
+      success: true,
+      message: "Notes fetched successfully",
+      data: notes,
+    });
+  } catch (error) {
+    console.error("Controller error:", error);
+    res.status(httpStatus.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: "Failed to fetch notes",
+      error: error.message,
+    });
+  }
+};
+
+const createTask = catchAsync(async (req, res) => {
+  const task = await adminService.createTask(req.body);
+  res.status(httpStatus.CREATED).json({
+    success: true,
+    message: "Task created successfully",
+    data: task,
+  });
+});
+
+// 🟣 Get All Tasks (admin only)
+const getAllTask = catchAsync(async (req, res) => {
+  const tasks = await adminService.getAllTask();
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Tasks fetched successfully",
+    data: tasks,
+  });
+});
+
+// 🔹 Get Task by ID
+const getTaskById = catchAsync(async (req, res) => {
+  const task = await adminService.getTaskById(req.params.id);
+  if (!task) throw new ApiError(httpStatus.NOT_FOUND, "Task not found");
+
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Task fetched successfully",
+    data: task,
+  });
+});
+
+// 🔹 Get All Tasks by UserId (new route)
+const getTasksByUserId = catchAsync(async (req, res) => {
+  const { userId } = req.params;
+  const tasks = await adminService.getTasksByUserId(userId);
+
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Tasks fetched successfully by user",
+    data: tasks,
+  });
+});
+
+// 🔸 Update Task
+const updateTask = catchAsync(async (req, res) => {
+  const updatedTask = await adminService.updateTask(req.params.id, req.body);
+
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Task updated successfully",
+    data: updatedTask,
+  });
+});
+
+// 🔴 Delete Task
+const deleteTask = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteTask(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, "Task not found");
+
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Task deleted successfully",
+  });
+});
+
+ const getInternalComplaint = catchAsync(async (req, res) => {
+  const patients = await adminService.getInternalComplaint(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
+});
+
+const getInternalComplaintById = catchAsync(async (req, res) => {
+  const patient = await adminService.getInternalComplaintById(req.params.id);
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
+});
+
+const updateInternalComplaint = catchAsync(async (req, res) => {
+  const updatedPatient = await adminService.updateInternalComplaint(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient updated successfully',
+    data: updatedPatient,
+  });
+});
+
+
+ const deleteInternalComplaint = catchAsync(async (req, res) => {
+  const patients = await adminService.deleteInternalComplaint(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Complaint Delete successfully',
+    data: patients,
+  });
+});
+
+const forwardInternalComplaint = async (req, res) => {
+  try {
+    const { department, topic, text, attachments, mode, note } = req.body;
+    const concernId = req.params.id;
+    const userId = req.user?._id; // ✅ capture the user who forwards
+
+    const updatedConcern = await adminService.forwardInternalComplaint(
+      concernId,
+      department,
+      {
+        topic,
+        text,
+        attachments,
+        mode,
+        note, // ✅ include note for forward history
+      },
+      userId // ✅ pass userId into service
+    );
+
+    res.json({
+      message: `Concern forwarded to ${department}`,
+      concern: updatedConcern,
+    });
+  } catch (error) {
+    console.error("Error forwarding concern:", error);
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const escalateInternalComplaint = async (req, res) => {
+  try {
+    const concernId = req.params.id;
+    const { level, note } = req.body;
+    const userId = req.user?._id; // assume user is from auth middleware
+
+    const updatedConcern = await adminService.escalateInternalComplaint(concernId, { level, note, userId });
+
+    res.json({
+      message: `Complaint escalated to ${level}`,
+      concern: updatedConcern,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const resolveInternalComplaint = async (req, res) => {
+  try {
+    const concernId = req.params.id;
+    const { note, proof } = req.body;
+    const userId = req.user?._id; // from auth middleware
+
+    if (!note) {
+      return res.status(400).json({ error: "Resolution note is required" });
+    }
+
+    const updatedConcern = await adminService.resolveInternalComplaint(concernId, { note, proof, userId });
+
+    res.json({
+      message: "Complaint resolved successfully",
+      concern: updatedConcern,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+const getInternalComplaintHistory = async (req, res) => {
+  try {
+    const concernId = req.params.id;
+    const history = await adminService.getInternalComplaintHistory(concernId);
+
+    res.json({
+      concernId,
+      history,
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+};
+
+// PUT /admin/update-progress/:id
+const updateInternalProgress = async (req, res) => {
+  try {
+    const concernId = req.params.id;           // ✅ take from URL param
+    const { updateNote } = req.body;
+    const userId = req.user?._id;              // ✅ authenticated user
+
+    if (!updateNote) {
+      return res.status(400).json({ error: "Progress remark is required" });
+    }
+
+    const updatedConcern = await adminService.updateInternalProgress(
+      concernId,
+      updateNote,
+      userId
+    );
+
+    if (!updatedConcern) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    res.status(200).json({
+      message: "Progress updated successfully",
+      data: updatedConcern,
+    });
+  } catch (error) {
+    console.error("Error updating progress remark:", error);
+    res.status(500).json({ message: "Error updating progress remark", error: error.message });
+  }
+};
+
+export const partialResolveInternal = async (req, res) => {
+  try {
+    const { id } = req.params; // complaintId
+    const { department, note, proof, userId } = req.body;
+
+    // 🔒 Validation
+    if (!department || !note) {
+      return res.status(400).json({
+        success: false,
+        message: "Department and note are required.",
+      });
+    }
+
+    // 🧩 Call the service
+    const result = await adminService.partialResolveInternal(id, {
+      department,
+      note,
+      proof,
+      userId,
+    });
+
+    // ✅ Clean and unified response
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error("❌ Partial resolve failed:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong while partially resolving the complaint.",
+    });
+  }
+};
+
+
+const getPartialResolveInternalDetails = async (req, res) => {
+  try {
+    const { concernId } = req.params;
+    const data = await adminService.getPartialResolveInternalDetails(concernId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Partial resolve details fetched successfully.",
+      data,
+    });
+  } catch (error) {
+    console.error("Get Partial Resolve Details Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to load partial resolve details.",
+    });
+  }
+};
+
+const partialInProgressInternal = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { department, note, userId } = req.body;
+
+    const result = await adminService.partialInProgressInternal(id, { department, note, userId });
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Partial InProgress Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const partialEscalateInternal = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { department, note, level, userId } = req.body;
+
+    const result = await adminService.partialEscalateInternal(id, { department, note, level, userId });
+    res.status(200).json(result);
+  } catch (error) {
+    console.error("Partial Escalate Error:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const adminForwardConcern = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user._id;
+    const { toDepartment, note, isPartial, affectedDepartments } = req.body;
+
+    const concern = await adminService.updateAdminAction(
+      id,
+      "forward",
+      { toDepartment, note, isPartial, affectedDepartments },
+      adminId
+    );
+
+    res.status(200).json({
+      message: `Concern ${isPartial ? "partially" : "fully"} forwarded successfully`,
+      concern,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/**
+ * 🟧 Admin: Escalate Concern (full or partial)
+ */
+const adminEscalateConcern = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user._id;
+    const { level, note, isPartial, affectedDepartments } = req.body;
+
+    const concern = await adminService.updateAdminAction(
+      id,
+      "escalate",
+      { level, note, isPartial, affectedDepartments },
+      adminId
+    );
+
+    res.status(200).json({
+      message: `Concern ${isPartial ? "partially" : "fully"} escalated successfully`,
+      concern,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/**
+ * 🟩 Admin: Resolve Concern (full or partial)
+ */
+const adminResolveConcern = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user?._id;
+    const { note, proof, isPartial = false, department, affectedDepartments } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ message: "Concern ID is required" });
+    }
+    if (!note) {
+      return res.status(400).json({ message: "Resolution note is required" });
+    }
+
+    // 🧩 Prepare payload for service
+    const data = {
+      note,
+      proof: proof || [],
+      isPartial,
+      department, // department for partial admin resolve
+      affectedDepartments: affectedDepartments || (department ? [department] : []),
+    };
+
+    // ✅ Call service
+    const result = await adminService.updateAdminAction(id, "resolved_by_admin", data, adminId);
+
+    return res.status(200).json({
+      success: true,
+      message: `Concern ${isPartial ? "partially" : "fully"} resolved by admin successfully`,
+      data: result.concern,
+    });
+  } catch (err) {
+    console.error("Admin Resolve Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Failed to resolve concern by admin",
+    });
+  }
+};
+
+/**
+ * 🟨 Admin: Mark In Progress (full or partial)
+ */
+const adminProgressConcern = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user._id;
+    const { note, isPartial, affectedDepartments } = req.body;
+
+    const concern = await adminService.updateAdminAction(
+      id,
+      "progress",
+      { note, isPartial, affectedDepartments },
+      adminId
+    );
+
+    res.status(200).json({
+      message: `Concern marked ${isPartial ? "partially" : "fully"} in progress`,
+      concern,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+
+ const handleAdminPartialResolve = async (req, res) => {
+  try {
+    const response = await adminService.partialAdminResolveConcern(req.params.id, {
+      department: req.body.department,
+      note: req.body.note,
+      proof: req.body.proof,
+      userId: req.user?._id,
+    });
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error("Partial Resolve Error:", error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ======================================================
+   🟨 Partial In-Progress Concern
+====================================================== */
+export const handleAdminPartialInProgress = async (req, res) => {
+  try {
+    const response = await adminService.partialAdminInProgressConcern(req.params.id, {
+      department: req.body.department,
+      note: req.body.note,
+      userId: req.user?._id,
+    });
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error("Partial In-Progress Error:", error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ======================================================
+   🟥 Partial Escalate Concern
+====================================================== */
+export const handleAdminPartialEscalate = async (req, res) => {
+  try {
+    const response = await adminService.partialAdminEscalateConcern(req.params.id, {
+      department: req.body.department,
+      note: req.body.note,
+      level: req.body.level,
+      userId: req.user?._id,
+    });
+
+    return res.status(200).json(response);
+  } catch (error) {
+    console.error("Partial Escalate Error:", error.message);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ======================================================
+   🧾 Get Partial Resolve Details
+====================================================== */
+  export const getAdminPartialResolveInfo = async (req, res) => {
+    try {
+      const data = await adminService.getAdminPartialResolveDetails(req.params.id);
+
+      return res.status(200).json({
+        success: true,
+        message: "Partial resolution details fetched successfully",
+        data,
+      });
+    } catch (error) {
+      console.error("Get Partial Resolve Details Error:", error.message);
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  };
+
+  const createTaskList = catchAsync(async (req, res) => {
+  const task = await adminService.createTaskList(req.body);
+  console.log('task', task)
+  res.status(httpStatus.CREATED).json({
+    success: true,
+    message: "Task created successfully",
+    data: task,
+  });
+});
+
+// 🟣 Get All Tasks (admin only)
+const getAllTaskList = catchAsync(async (req, res) => {
+  const tasks = await adminService.getAllTaskList();
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Tasks fetched successfully",
+    data: tasks,
+  });
+});
+
+const getTaskListByUserId = catchAsync(async (req, res) => {
+  const { userId } = req.params;
+  const tasks = await adminService.getTaskListByUserId(userId);
+
+  res.status(httpStatus.OK).json({
+    success: true,
+    message: "Tasks fetched successfully by user",
+    data: tasks,
+  });
+});
+
+const getTaskByList = async (req, res) => {
+  try {
+    const { listId } = req.params;
+    const { userId, userModel } = req.query;
+
+    const data = await adminService.getTasksByList(listId, userId, userModel);
+
+    return res.status(200).json({
+      success: true,
+      message: "Tasks fetched successfully for the selected list",
+      total: data.length,
+      data,
+    });
+  } catch (error) {
+    console.error("Get Task By List Error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch tasks for this list",
+    });
+  }
+};
+
+const getAllTaskListsWithTasks = async (req, res) => {
+  try {
+    const { userId, userModel } = req.query;
+    console.log("🧩 Backend Query Params:", { userId, userModel });
+
+    const data = await adminService.getAllTaskListsWithTasks(userId, userModel);
+
+    return res.status(200).json({
+      success: true,
+      message: "All task lists with tasks fetched successfully",
+      totalLists: data.length,
+      data,
+    });
+  } catch (error) {
+    console.error("❌ GetAllTaskListsWithTasks Error:", error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch task lists with tasks",
+    });
+  }
+};
+
+const handleSearchComplaints = async (req, res) => {
+  try {
+    const { query } = req.query;
+
+
+    // ✅ Allow even one character search
+    if (typeof query !== "string" || query.trim().length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: "No query provided",
+      });
+    }
+
+    console.log("🔍 Incoming Query:", query);
+
+    const results = await adminService.searchComplaints(query.trim());
+    console.log("✅ Results Found:", results.length);
+
+    return res.status(200).json({
+      success: true,
+      total: results.length,
+      data: results,
+      message:
+        results.length > 0
+          ? "Complaints fetched successfully"
+          : "No complaints found",
+    });
+  } catch (error) {
+    console.error("Complaint Search Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while searching complaints",
+      error: error.message,
+      data: [],
+    });
+  }
+};
+
+const createBugReport = async (req, res) => {
+  try {
+    let screenshotUrl = "";
+
+    // ✅ Handle file upload
+    if (req.file) {
+      screenshotUrl = await uploadToHPanel(req.file, "bug-reports");
+    }
+
+    const { description, userId, userModel, priority } = req.body;
+
+    if (!description || !userId || !userModel) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: description, userId, or userModel",
+      });
+    }
+
+    const newBug = await adminService.createBugReportService({
+      userId,
+      userModel,
+      screenshot: screenshotUrl,
+      description,
+      priority,
+    });
+
+    // ✅ Optional: notify admin panel
+    // await girirajModels.GIRIRAJNotification?.create({
+    //   title: "New Bug Report",
+    //   body: `${description.substring(0, 60)}...`,
+    //   department: "Development",
+    //   status: "saved",
+    //   data: {
+    //     bugId: newBug._id.toString(),
+    //     reporterType: userModel,
+    //   },
+    // });
+
+    res.status(201).json({
+      success: true,
+      message: "Bug report submitted successfully",
+      data: newBug,
+    });
+  } catch (error) {
+    console.error("❌ Bug report error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to submit bug report",
+    });
+  }
+};
+
+const getAllBugReports = async (req, res) => {
+  try {
+    const bugs = await adminService.getAllBugReportsService();
+    res.json({ success: true, data: bugs });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch bug reports",
+    });
+  }
+};
+
+const updateBugStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const updated = await adminService.updateBugStatusService(id, status);
+    res.json({
+      success: true,
+      message: "Bug report status updated",
+      data: updated,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to update bug status",
+    });
+  }
+};
+
+ const getNotificationSettings = async (req, res) => {
+  try {
+    const { userId, userModel } = req.query;
+
+    if (!userId || !userModel) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing userId or userModel in request query",
+      });
+    }
+
+    const settings = await adminService.getNotificationSettingsService(userId, userModel);
+
+    return res.status(200).json({
+      success: true,
+      message: "Notification settings fetched successfully",
+      data: settings,
+    });
+  } catch (error) {
+    console.error("❌ getNotificationSettings error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch notification settings",
+      error: error.message,
+    });
+  }
+};
+
+/* ----------------------------------------------------
+   🔹 Controller: Update Notification Settings
+---------------------------------------------------- */
+const updateNotificationSettings = async (req, res) => {
+  try {
+    const { userId, userModel } = req.body;
+
+    if (!userId || !userModel) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing userId or userModel in request body",
+      });
+    }
+
+    const updatedSettings = await adminService.updateNotificationSettingsService(
+      userId,
+      userModel,
+      req.body
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Notification settings updated successfully",
+      data: updatedSettings,
+    });
+  } catch (error) {
+    console.error("❌ updateNotificationSettings error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update notification settings",
+      error: error.message,
+    });
+  }
+};
+
+export default { createIPDPatient, getIPDPatients, getIPDPatientById, updateIPDPatientById, deleteIPDPatientById, createComplaint, getComplaintById, getAllComplaints, updateComplaint,
+  createOPDPatient, getOPDPatients, getOPDPatientById, updateOPDPatientById, deleteOPDPatientById, getComplaintStatsByDepartment, getIPDPatientByRating, getOPDPatientByRating, updateProgressRemark,
+  createRole, getAllRoles, getRoleById, updateRole, deleteRole, createRoleUser, getAllRoleUsers, getRoleUserById, updateRoleUser, deleteRoleUser, getDashboard, createIPDConcern,
+  getIPDConcern, getIPDPaConcernById, updateIPDConcernById, deleteIPDConcernById,forwardConcern, fetchConcernsByDepartment, escalateComplaint, resolveComplaint, viewConcernHistory,
+  createDoctor, getDoctors, getDoctorById, updateDoctor, deleteDoctor, saveTokenController, getUserNotifications, getAllComplaintDetails, getAllComplaintDetails, 
+  createBed, getBeds, getBedById, updatedBed, deleteBed, validateBed, getComplaintsSummary, getServiceSummaryController, getFrequentRatings, frequentOPDRatings, partialResolveController,
+  getPartialResolveDetailsController, partialEscalateController, partialInProgressController, createNote, getAllNotes, getNoteById, updateNote, deleteNote,
+  createTask, getAllTask, getTaskById, updateTask, deleteTask, getNotesByUserId, getTasksByUserId, getInternalComplaint, getInternalComplaintById, updateInternalComplaint,
+  deleteInternalComplaint, forwardInternalComplaint, updateInternalProgress, escalateInternalComplaint, resolveInternalComplaint, partialEscalateInternal, getInternalComplaintHistory,
+  partialResolveInternal, getPartialResolveInternalDetails, partialInProgressInternal, adminResolveConcern, adminEscalateConcern, adminProgressConcern, adminForwardConcern, handleAdminPartialEscalate,
+  handleAdminPartialInProgress, handleAdminPartialResolve, getAdminPartialResolveInfo, createTaskList, getAllTaskList, getTaskListByUserId, getTaskByList,getAllTaskListsWithTasks,
+  handleSearchComplaints, createBugReport, getAllBugReports, updateBugStatus, getNotificationSettings, updateNotificationSettings,
 }

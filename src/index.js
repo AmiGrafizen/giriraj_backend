@@ -1,43 +1,32 @@
 import dotenv from "dotenv";
-import connectDB from "./db/index.js";
-import http from "http";
-import { Server } from "socket.io";
-import { app } from './app.js';
-import { initSocket } from "./socket/index.js";
+import { primaryConnection, backupConnection } from "./db/index.js";
+import app from "./app.js";
 
 dotenv.config({ path: "./config.env" });
 
-const PORT = process.env.PORT || 3000;
+async function connectDatabases() {
+  try {
+    // ✅ Wait for both connections to be ready
+    await Promise.all([
+      primaryConnection.asPromise(),
+      backupConnection.asPromise(),
+    ]);
 
-connectDB()
-  .then(async () => {
-    // 1. Create HTTP server with Express app
-    const server = http.createServer(app);
+    console.log("✅ Both MongoDB databases connected successfully");
+  } catch (error) {
+    console.error("❌ MongoDB connection error:", error);
+    process.exit(1);
+  }
+}
 
-    // 2. Attach socket.io
-    const io = new Server(server, {
-      cors: { origin: "*" }, // or restrict to frontend domain
+connectDatabases()
+  .then(() => {
+    const PORT = process.env.PORT || 8000;
+    app.listen(PORT, () => {
+      console.log(`⚙️ Server is running at port: ${PORT}`);
     });
-
-    // 3. Initialize socket events
-    initSocket(io);
-
-    // 4. Store io in app (so controllers can use it)
-    app.set("io", io);
-
-    // 5. Start server
-    server.listen(PORT, "0.0.0.0", () => {
-      console.log(`⚙️ Server running on port: ${PORT}`);
-    });
-
-    // 6. Start schedulers if needed
-    // try {
-    //   const { startReminderScheduler } = await import("./HYGO/src/cron/reminderSchedular.js");
-    //   startReminderScheduler();
-    // } catch (err) {
-    //   console.error("🚨 Scheduler failed to start:", err);
-    // }
   })
   .catch((err) => {
-    console.log("❌ MongoDB connection failed:", err);
+    console.error("❌ Failed to connect databases:", err);
+    process.exit(1);
   });

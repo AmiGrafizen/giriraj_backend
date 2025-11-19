@@ -1,122 +1,110 @@
-import mongoose, { Schema } from "mongoose";
-import bcrypt from "bcryptjs";
-import roles from "../config/roles.js";
-import toJSON from "./plugins/toJSON.plugin.js";
-import paginate from "./plugins/paginate.plugin.js";
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
-const addressSchema = new Schema(
+const userSchema = new mongoose.Schema(
   {
-    street: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    city: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    state: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    zipCode: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    country: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    isPrimary: {
-      type: Boolean,
-      default: false,
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
+    name: { type: String, trim: true },
 
-const userSchema = new Schema(
-  {
-    username: {
-      type: String,
-      lowercase: true,
-      trim: true,
-      sparse: true,
-    },
-    email: {
-      type: String,
-      trim: true,
-      sparse: true,
-      lowercase: true,
-    },
-    mobileNumber: {
-      type: String,
-      unique: true,
-      trim: true,
-    },
+    // ✅ Core identity fields
+    mobileNumber: { type: String, required: true, unique: true },
+    alternativeMobile: { type: String, default: null },
+    email: { type: String, lowercase: true, trim: true, unique: true, sparse: true },
+
+    // ✅ Authentication fields
     password: {
       type: String,
       trim: true,
       minlength: 6,
-      private: true, 
+      required: true,
+      select: false, // hide password in normal queries
     },
-    role: {
+
+    // ✅ CometChat Integration Fields (🆕 Added)
+    cometUid: { type: String, trim: true }, // store CometChat UID like "user_<ObjectId>"
+    cometToken: { type: String, trim: true }, // optional cached token (auto-refresh supported)
+
+    // ✅ Notifications / Push
+    fcmTokens: { type: [String], default: [] },
+
+    // ✅ Profile Information
+    gender: { type: String, enum: ['Male', 'Female', 'Other'], default: 'Other' },
+    dateOfBirth: { type: Date },
+    age: { type: Number },
+    image: { type: String },
+    avatarUri: { type: String }, // CometChat avatar can use this
+    country: { type: String },
+    state: { type: String },
+    city: { type: String },
+
+    height: { type: Number },
+    weight: { type: Number },
+    bloodGroup: {
       type: String,
-      enum: roles,
-      default: "user",
+      enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
     },
-    referralCode: {
-      type: String,
-    },
-    referPrice: {
+
+    chronicDiseases: [{ type: String }],
+    allergies: [{ type: String }],
+
+    // ✅ Hospital Security Code (HSC)
+    hsc: {
       type: Number,
-      default: 0,
+      unique: true,
+      min: 100,
+      max: 999,
     },
-    shippingAddress: [addressSchema],
-    verified: {
-      type: Boolean,
-      default: false,
-    },
+
+    otpHash: String,
+    otpExpires: Date,
   },
-  {
-    timestamps: true, 
-  }
+  { timestamps: true }
 );
 
-userSchema.plugin(toJSON);
-
-userSchema.plugin(paginate);
-
-
-userSchema.statics.isEmailTaken = async function (email, excludeUserId) {
-  const user = await this.findOne({ email, _id: { $ne: excludeUserId } });
-  return !!user;
-};
-
-
-userSchema.statics.isMobileNumberTaken = async function (mobileNumber, excludeUserId) {
-  const user = await this.findOne({ mobileNumber, _id: { $ne: excludeUserId } });
-  return !!user;
-};
-
-userSchema.methods.isPasswordMatch = async function (password) {
-  const user = this;
-  return bcrypt.compare(password, user.password);
-};
-
-userSchema.pre("save", async function (next) {
-  const user = this;
-  if (!user.password) next();
-  if (user.isModified("password")) {
-    user.password = await bcrypt.hash(user.password, 8);
+/* ✅ Pre-save hook for:
+   - Unique HSC
+   - Hash password if modified
+   - Generate default CometChat UID
+*/
+userSchema.pre('save', async function (next) {
+  // 1️⃣ Generate unique HSC
+  if (!this.hsc) {
+    let code;
+    let exists = true;
+    while (exists) {
+      code = Math.floor(100 + Math.random() * 900);
+      exists = await mongoose.models.User?.findOne({ hsc: code });
+    }
+    this.hsc = code;
   }
+
+  // 2️⃣ Hash password if changed
+  if (this.isModified('password')) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+
+  // 3️⃣ Generate CometChat UID if missing
+  if (!this.cometUid && this._id) {
+    this.cometUid = `user_${this._id.toString()}`;
+  }
+
   next();
 });
 
-export const User = mongoose.model("User", userSchema);
+/* ✅ Static Method — Check mobile number availability */
+userSchema.statics.isMobileNumberTaken = async function (mobileNumber) {
+  const user = await this.findOne({ mobileNumber });
+  return !!user;
+};
+
+/* ✅ Instance Method — Compare password safely */
+userSchema.methods.isPasswordMatch = async function (password) {
+  return bcrypt.compare(password, this.password);
+};
+
+/* ✅ Indexes for better performance */
+userSchema.index({ email: 1 }, { unique: true, sparse: true });
+userSchema.index({ mobileNumber: 1 }, { unique: true });
+userSchema.index({ fcmTokens: 1 });
+userSchema.index({ cometUid: 1 }); // 🔥 for CometChat lookups
+
+export default userSchema;

@@ -1,0 +1,36 @@
+{
+  "token_hmac_secret_key": "rhTAlP8FrhvfjPkUgMgUDycGbTCeqGJxyaMmnzzC",
+  "api_key": "my_api_key_123",
+
+  "admin": {
+    "enabled": true,
+    "password": "admin123",
+    "secret": "rhTAlP8FrhvfjPkUgMgUDycGbTCeqGJxyaMmnzzC"
+  },
+
+  "client": {
+    "anonymous": true,
+    "insecure": true,
+    "allowed_origins": ["*"],
+    "publish": true,
+    "subscribe_to_publish": true,
+    "presence": true,
+    "history": true
+  },
+
+  "engine": {
+    "type": "memory"
+  },
+
+  "broker": {
+    "type": "memory"
+  },
+
+  "presence": {
+    "type": "memory"
+  },
+
+  "log": {
+    "level": "debug"
+  }
+}

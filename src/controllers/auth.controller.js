@@ -1,20 +1,24 @@
-import { User } from "../models/user.model.js";
+import { girirajModels } from "../db/index.js";
 import authService from "../services/auth.service.js";
 import tokenService from "../services/token.service.js";
 import userService from "../services/user.service.js";
 import catchAsync from "../utils/catchAsync.js";
 import httpStatus from "http-status" ;
+import jwt from 'jsonwebtoken';
 
-const registerUser = catchAsync(async (req, res) => {
-  const user = await authService.createNewUser(req.body);
-  const tokens = await tokenService.generateAuthTokens(user);
-  res.status(httpStatus.CREATED).send({ user, tokens });
-});
+const registerUser = async (req, res) => {
+  try {
+    const result = await authService.createNewUser(req.body);
+    return res.status(201).json(result);
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
 
 const registerAdmin = catchAsync(async (req, res) => {
   const user = await authService.createAdmin(req.body);
-  const tokens = await tokenService.generateAuthTokens(user);
-  res.status(httpStatus.CREATED).send({ user, tokens });
+  // const tokens = await tokenService.generateAuthTokens(user);
+  res.status(httpStatus.CREATED).send({ user });
 });
 
 const updateUser = catchAsync(async (req, res) => {
@@ -22,14 +26,18 @@ const updateUser = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send({ user });
 });
 
-const loginUser = catchAsync(async (req, res) => {
-  const {email,password} = req.body
-  const user = await authService.loginUser(email,password);
-  res.status(httpStatus.OK).send({ user });
-});
-
+const loginUser = async (req, res) => {
+  try {
+    const { name, password } = req.body;
+    const result = await authService.loginUser(name, password);
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(401).json({ message: error.message });
+  }
+};
 const loginAdmin = catchAsync(async (req, res) => {
   const {email,password} = req.body
+  console.log('req.body', req.body)
   const user = await authService.loginAdmin(email,password);
   res.status(httpStatus.OK).send({ user });
 });
@@ -71,9 +79,6 @@ const getAllUsers = async (req, res, next) => {
   res.status(httpStatus.OK).send({ users });
 };
 
- 
-
-
 const sendOtp = async (req, res, next) => {
   try {
     const { mobileNumber } = req.body;
@@ -110,26 +115,43 @@ const sendOtp = async (req, res, next) => {
   }
 };
 
-const verifyOtp = async (req, res, next) => {
+const verifyOtp = async (req, res) => {
   try {
     const { mobileNumber, otp } = req.body;
 
-    if (!mobileNumber || mobileNumber.length !== 10 || !otp) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid request. Mobile number and OTP are required.",
+    if (!mobileNumber || !otp) {
+      return res.status(httpStatus.BAD_REQUEST).json({ message: "Mobile number and OTP are required!" });
+    }
+
+    const response = await authService.verifyOtp({ mobileNumber, otp });
+    res.status(httpStatus.OK).json(response);
+  } catch (error) {
+    res.status(error.statusCode || httpStatus.INTERNAL_SERVER_ERROR).json({
+      message: error.message || "Internal server error",
+    });
+  }
+};
+
+const setPassword = async (req, res) => {
+  try {
+    const { mobileNumber, password, confirmPassword } = req.body;
+
+    if (!mobileNumber || !password || !confirmPassword) {
+      return res.status(httpStatus.BAD_REQUEST).json({
+        message: "Mobile number, password, and confirm password are required!",
       });
     }
 
-    const response = await authService.verifyOtp(mobileNumber, otp);
-    res.status(200).json({
-      success: true,
-      ...response,
-    });
+    const response = await authService.setPassword({ mobileNumber, password, confirmPassword });
+    res.status(httpStatus.OK).json(response);
   } catch (error) {
-    next(error);
+    res.status(error.statusCode || httpStatus.INTERNAL_SERVER_ERROR).json({
+      message: error.message || "Internal server error",
+    });
   }
 };
+
+
 const updatePaymentStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -151,5 +173,56 @@ const updatePaymentStatus = async (req, res) => {
   }
 };
 
+const loginRoleUserController = async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+    if (!identifier || !password) {
+      return res.status(400).json({ message: "Email/Username and password are required." });
+    }
+
+    const user = await authService.findUserByIdentifierService(identifier);
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    const ok = await authService.validatePasswordService(password, user, girirajModels);
+    if (!ok) return res.status(401).json({ message: "Invalid password." });
+
+    user.password = undefined; // don't return password
+    const token = authService.generateTokenService(user);
+
+    // --------------------------------------------------------------------
+    // 🧠 COMETCHAT INTEGRATION (auto-create user + generate token)
+    // --------------------------------------------------------------------
+    let cometToken = null;
+    try {
+      const uid = `roleuser_${user._id}`; // unique CometChat UID for role users
+      const name = user.name || user.email;
+
+      // ✅ Ensure the user exists in CometChat
+      await ensureCometUser(uid, name, user.avatar || "");
+
+      // ✅ Generate an auth token for this user
+      cometToken = await generateCometAuthToken(uid);
+      console.log("CometChat token generated for:", uid);
+    } catch (err) {
+      console.error("CometChat integration failed:", err.message);
+    }
+
+    // ✅ Return everything to the frontend
+    return res.status(200).json({
+      message: "Login successful",
+      token,
+      user,
+      cometToken, // 👈 added
+    });
+  } catch (err) {
+    console.error("Login Error:", err);
+    return res.status(500).json({
+      message: "Internal server error",
+      error: err.message,
+    });
+  }
+};
+
+
   
-export default {registerUser,registerAdmin,loginUser,loginAdmin,updateUser, getReferPrice, updateReferPrice, sendOtp, verifyOtp, updatePaymentStatus, getAllUsers}
+export default {registerUser,registerAdmin,loginUser,loginAdmin,updateUser, getReferPrice, updateReferPrice, sendOtp, verifyOtp, updatePaymentStatus, getAllUsers, setPassword, loginRoleUserController,}

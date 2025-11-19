@@ -4,32 +4,25 @@ import cookieParser from "cookie-parser"
 import httpStatus from "http-status"
 const app = express()
 
+app.use(cors());
+
 app.use(cors({
-  origin: function (origin, callback) {
-     if (!origin) return callback(null, true);
-       callback(null, origin); 
-         },
-        }));
+    origin: process.env.CORS_ORIGIN,
+    credentials: true
+}))
 
-  app.options('*', cors())
-
-app.use(express.json({limit: "50mb"}))
-app.use(express.urlencoded({extended: true, limit: "50mb"}))
+app.use(express.json({limit: "16kb"}))
+app.use(express.urlencoded({extended: true, limit: "16kb"}))
 app.use(express.static("public"))
 app.use(cookieParser())
 
-          
+
+import userRouter from './routes/auth.routes.js'
 import routes from './routes/index.routes.js'
-import girirajRoutes from "./Giriraj-Admin/src/routes/index.routes.js";
-import mtRoutes from "./MT/src/routes/index.routes.js";
 import {errorHandler} from "./utils/ApiError.js"
 
-
-
 //routes declaration
-app.use("/api/v2", routes);
-app.use("/api/v2/giriraj", girirajRoutes);
-app.use("/api/v2/mt", mtRoutes);
+app.use("/api/v2/giriraj", routes)
 
 app.get('/', (req, res) => {
     res.status(httpStatus.OK).send({ status: 'Health Check :) Server is up and running' });
@@ -38,4 +31,4 @@ app.get('/', (req, res) => {
   app.use(errorHandler);
 
 
-export { app }
+  export default app;

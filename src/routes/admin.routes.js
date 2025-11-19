@@ -1,163 +1,218 @@
 import { Router } from 'express';
 import adminController from '../controllers/admin.controller.js';
-import authMiddleware from '../middlewares/auth.middleware.js';
-import  {validate}  from '../middlewares/validation.middlewares.js';
-import productValidation from '../validations/product.validation.js';
-import multer from 'multer';
 
-const router = Router() ;
-const upload = multer({ dest: 'uploads/' });
+const router = Router();
 
-router.get('/categories', adminController.getCategories);
-router.get('/products', adminController.getProducts);
-router.get('/product/:id', adminController.getProductsByCategoryId);
+router
+  .route('/ipd-patient')
+  .post(adminController.createIPDPatient)
+  .get(adminController.getIPDPatients);
 
-// router.use(authMiddleware.authenticateAdmin);
+router
+  .route('/ipd-patient/:id')
+  .get(adminController.getIPDPatientById)
+  .put(adminController.updateIPDPatientById)
+  .delete(adminController.deleteIPDPatientById);
 
-router.route('/category')
-  .post(validate(productValidation.createCategorySchema),adminController.createCategory);
+router
+  .route('/ipd-concern')
+  .post(adminController.createIPDConcern)
+  .get(adminController.getIPDConcern);
 
-router.route('/category/:id')
-  .put(validate(productValidation.updateCategorySchema),adminController.updateCategory)
-  .delete(adminController.deleteCategory);
+router
+  .route('/ipd-concern/:id')
+  .get(adminController.getIPDPaConcernById)
+  .put(adminController.updateIPDConcernById)
+  .delete(adminController.deleteIPDConcernById);
 
-router.route('/our-service')
-  .post(adminController.createOurServices)
-  .get(adminController.getOurServices);
+router
+  .route('/opd-patient')
+  .post(adminController.createOPDPatient)
+  .get(adminController.getOPDPatients);
 
-router.route('/our-service/:id')
-  .put(adminController.updateOurServices)
-  .delete(adminController.deleteOurService);
+router
+  .route('/opd-patient/:id')
+  .get(adminController.getOPDPatientById)
+  .put(adminController.updateOPDPatientById)
+  .delete(adminController.deleteOPDPatientById);
 
-router.route('/about-us-page')
-  .post(adminController.createAboutUsMainPage)
-  .get(adminController.getAboutUsMainPage);
+router
+  .route('/complaint')
+  .post(adminController.createComplaint)
+  .get(adminController.getAllComplaints);
 
-router.route('/about-us-page/:id')
-  .put(adminController.updateAboutUsMainPage)
-  .delete(adminController.deleteAboutUsMainPage);
+router
+  .route('/complaint/:id')
+  .get(adminController.getComplaintById)
+  .put(adminController.updateComplaint);
 
-router.route('/product')
-  .post(adminController.createProduct);
+router.get('/complaint-by-department', adminController.getComplaintStatsByDepartment);
 
-  router.route('/product/:id')
-  .put(adminController.updateProduct)
-  .delete(adminController.deleteProduct);
-  
-router.route('/testimonial')
-.post(adminController.createFeedback)
-.get(adminController.getFeedbacks);
+router.get('/ipd-by-rating', adminController.getIPDPatientByRating);
 
-router.route('/testimonial/:id')
-.put(adminController.updateFeedback)
-.delete(adminController.deleteFeedback);
+router.get('/opd-by-rating', adminController.getOPDPatientByRating);
 
-router.route('/core-values')
-.post(adminController.createCoreValues)
-.get(adminController.getCoreValues);
+router.route('/role')
+.post(adminController.createRole)
+.get(adminController.getAllRoles);
 
-router.route('/core-values/:id')
-.put(adminController.updateCoreValues)
-.delete(adminController.deleteCoreValues);
+router.route('/role/:id')
+.put(adminController.updateRole)
+.get(adminController.getRoleById)
+.delete(adminController.deleteRole);
 
-router.route('/vision-mission')
-.post(adminController.createVisionAndMission)
-.get(adminController.getVisionAndMission);
+router.route('/role-user')
+.post(adminController.createRoleUser)
+.get(adminController.getAllRoleUsers);
 
-router.route('/vision-mission/:id')
-.put(adminController.updateVisionAndMission)
-.delete(adminController.deleteVisionAndMission);
+router.route('/role-user/:id')
+.put(adminController.updateRoleUser)
+.get(adminController.getRoleUserById)
+.delete(adminController.deleteRoleUser);
 
-router.route('/faq')
-.post(adminController.createFaq)
-.get(adminController.getFaqs);
 
-router.route('/faq/:id')
-.put(adminController.updateFaq)
-.delete(adminController.deleteFaq);
+router.route('/doctor')
+.post(adminController.createDoctor)
+.get(adminController.getDoctors);
 
-router.route('/team')
-.post(adminController.createTeam)
-.get(adminController.getTeam);
+router.route('/doctor/:id')
+.put(adminController.updateDoctor)
+.get(adminController.getDoctorById)
+.delete(adminController.deleteDoctor);
 
-router.route('/team/:id')
-.get(adminController.getTeamById)
-.put(adminController.updateTeam)
-.delete(adminController.deleteTeam);
+router.route('/bed')
+.post(adminController.createBed)
+.get(adminController.getBeds);
 
-router.route('/company-info')
-.post(adminController.createCompanyInfo)
-.get(adminController.getCompanyInfo);
+router.route('/bed/:id')
+.put(adminController.updatedBed)
+.get(adminController.getBedById)
+.delete(adminController.deleteBed);
 
-router.route('/company-info/:id')
-.put(adminController.updateCompanyInfo)
-.delete(adminController.deleteCompanyInfo);
+router.get("/validate/:bedNo", adminController.validateBed);
 
-router.route('/about-us')
-.post(adminController.addAboutUsPage)
-.get(adminController.getAboutUsPage);
+router.get("/dashboard", adminController.getDashboard);
 
-router.route('/about-us/:id')
-.put(adminController.updateAboutUsPage)
-.get(adminController.getAboutUsById)
-.delete(adminController.deleteAboutUsPage);
+router.post("/:id/forward", adminController.forwardConcern);
 
-router.route('/blog')
-.post(adminController.addBlog)
-.get(adminController.getBlog);
+router.get("/department/:department", adminController.fetchConcernsByDepartment);
 
-router.route('/blog/:id')
-.put(adminController.updateBlog)
-.delete(adminController.deleteBlog);
+router.post("/:id/escalate", adminController.escalateComplaint);
 
-router.route('/what-we-offer')
-.post(adminController.createWhatWeOffer)
-.get(adminController.getWhatWeOffer);
+router.post("/:id/resolve", adminController.resolveComplaint);
 
-router.route('/what-we-offer/:id')
-.put(adminController.updateWhatWeOffer)
-.delete(adminController.deleteWhatWeOffer);
+router.get("/:id/history", adminController.viewConcernHistory);
 
-router.route('/why-choose-us')
-.post(adminController.createWhyChooseUs)
-.get(adminController.getWhyChooseUs);
+router.put("/update-progress/:id", adminController.updateProgressRemark);
 
-router.route('/why-choose-us/:id')
-.put(adminController.updateWhyChooseUs)
-.delete(adminController.deleteWhyChooseUs);
+router.post("/tokens/save", adminController.saveTokenController);
 
-router.route('/vision')
-.post(adminController.createVision)
-.get(adminController.getVision);
+router.get("/notifications", adminController.getUserNotifications);
 
-router.route('/vision/:id')
-.put(adminController.updateVision)
-.delete(adminController.deleteVision);
+router.get("/complaint-details", adminController.getAllComplaintDetails);
+router.get("/complaint-summary", adminController.getComplaintsSummary);
 
-router.route('/mission')
-.post(adminController.createMission)
-.get(adminController.getMission);
+router.get("/service-summary", adminController.getServiceSummaryController);
 
-router.route('/mission/:id')
-.put(adminController.updateMission)
-.delete(adminController.deleteMission);
+router.get("/frequent-ratings", adminController.getFrequentRatings);
 
-router.route('/core-values-main')
-.post(adminController.createCoreValuesMain)
-.get(adminController.getCoreValuesMain);
+router.get("/opd-frequent-ratings", adminController.frequentOPDRatings);
 
-router.route('/core-values-main/:id')
-.put(adminController.updateCoreValuesMain)
-.delete(adminController.deleteCoreValuesMain);
+router.post("/:id/partial-resolve", adminController.partialResolveController);
 
-router.route('/hero-image')
-.post(adminController.addHeroImage)
-.get(adminController.getHeroImage);
+router.post("/:id/partial-inprogress", adminController.partialInProgressController);
 
-router.route('/hero-image/:id')
-.put(adminController.updateHeroImage)
-.delete(adminController.deleteHeroImage);
+router.post("/:id/partial-escalate", adminController.partialEscalateController);
 
-router.get('/contact-us', adminController.getContacts);
+router.get("/partial-resolve/:concernId", adminController.getPartialResolveDetailsController);
+
+router.route('/note')
+.post(adminController.createNote)
+.get(adminController.getAllNotes);
+
+router.route('/note/:id')
+.put(adminController.updateNote)
+.get(adminController.getNoteById)
+.delete(adminController.deleteNote);
+
+router.get('/note/user/:userId', adminController.getNotesByUserId);
+
+router.route('/task')
+.post(adminController.createTask)
+.get(adminController.getAllTask);
+
+router.route('/task/:id')
+.put(adminController.updateTask)
+.get(adminController.getTaskById)
+.delete(adminController.deleteTask);
+
+router.get("/task/user/:userId", adminController.getTasksByUserId);
+
+router.get("/task/list/:listId", adminController.getTaskByList);
+
+router.route('/task-list')
+.post(adminController.createTaskList)
+.get(adminController.getAllTaskList);
+
+router.get("/task-list/user/:userId", adminController.getTaskListByUserId);
+
+router.get("/task-list/all-with-tasks", adminController.getAllTaskListsWithTasks);
+
+
+router
+  .route('/internal-complaints')
+  .get(adminController.getInternalComplaint);
+
+router
+  .route('/internal-complaint/:id')
+  .get(adminController.getInternalComplaintById)
+  .put(adminController.updateInternalComplaint)
+  .delete(adminController.deleteInternalComplaint);
+
+router.post("/internal/:id/partial-resolve", adminController.partialResolveInternal);
+
+router.post("/internal/:id/partial-inprogress", adminController.partialInProgressInternal);
+
+router.post("/internal/:id/partial-escalate", adminController.partialEscalateInternal);
+
+router.get("/internal/partial-resolve/:concernId", adminController.getPartialResolveInternalDetails);
+
+router.post("/internal/:id/forward", adminController.forwardInternalComplaint);
+
+router.post("/internal/:id/escalate", adminController.escalateInternalComplaint);
+
+router.post("/internal/:id/resolve", adminController.resolveInternalComplaint);
+
+router.get("/internal/:id/history", adminController.getInternalComplaintHistory);
+
+router.put("/internal/update-progress/:id", adminController.updateInternalProgress);
+
+router.post("/:id/admin-forward", adminController.adminForwardConcern);
+
+router.post("/:id/admin-progress", adminController.adminProgressConcern);
+
+router.post("/:id/admin-escalate", adminController.adminEscalateConcern);
+
+router.post("/:id/admin-resolve", adminController.adminResolveConcern);
+
+router.post("/:id/admin-partial-resolve", adminController.handleAdminPartialResolve);
+
+router.post("/:id/admin-partial-inprogress", adminController.handleAdminPartialInProgress);
+
+router.post("/:id/admin-partial-escalate", adminController.handleAdminPartialEscalate);
+
+router.get("/partial-resolve/:concernId", adminController.getAdminPartialResolveInfo);
+
+router.get("/search-concern", adminController.handleSearchComplaints);
+
+router.post("/bug/create", adminController.createBugReport);
+
+router.get("/all-bugs", adminController.getAllBugReports);
+
+router.put("/update-bug/:id", adminController.updateBugStatus);
+
+router.get("/notification-settings", adminController.getNotificationSettings);
+
+router.put("/notification-setting/update", adminController.updateNotificationSettings);
 
 export default router;
