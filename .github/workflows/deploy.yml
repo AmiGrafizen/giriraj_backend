@@ -34,7 +34,7 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
-          port: 22
+          port: 21
           server-dir: /domains/backend.feedbacks.live/public_html/
           local-dir: ./      # or ./build/ or ./dist/ depending on your project
           exclude: |
