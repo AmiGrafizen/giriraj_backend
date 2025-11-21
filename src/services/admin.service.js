@@ -212,13 +212,15 @@ const deleteIPDPatientById = async (id) => {
 }
 
 const updateIPDPatientById = async (id, update) => {
-  const patient = await girirajModels.GIRIRAJIPDPatients?.findByIdAndUpdate(id, update, { new: true });
+  const IPDModel = getModel("GIRIRAJIPDPatients");
+  const patient = await IpdModel.findByIdAndUpdate(id, update, { new: true });
   if (!patient) throw new ApiError(404, 'Patient not found');
   return patient;
 };
 
 async function getIPDPatientByRating() {
-  const feedbacks = await girirajModels.GIRIRAJIPDPatients?.find().lean();
+  const IPDModel = getModel("GIRIRAJIPDPatients");
+  const feedbacks = await IPDModel.find().lean();
 
   const grouped = {};
 
@@ -246,6 +248,7 @@ async function getIPDPatientByRating() {
 
 
 const createIPDConcern = async (payload) => {
+  
   return await girirajModels.GIRIRAJIPDConcern?.create(payload);
 };
 
@@ -348,7 +351,8 @@ const deleteOPDPatientById = async (id) => {
 };
 
 async function getOPDPatientByRating() {
-  const feedbacks = await girirajModels.GIRIRAJOpd?.find().lean();
+  const OPDModel = getModel("GIRIRAJOpd")
+  const feedbacks = await OPDModel.find().lean();
 
   const grouped = {};
 
@@ -422,7 +426,8 @@ function formatMinutes(minutes) {
 }
 
 const createRole = async (data) => {
-  return await girirajModels?.GIRIRAJRole?.create(data);
+  const role = getModel("GIRIRAJRole");
+  return await role.create(data);
 };
 
 const getAllRoles = async () => {
@@ -446,11 +451,13 @@ const getRoleById = async (id) => {
 };
 
 const updateRole = async (id, data) => {
-  return await girirajModels?.GIRIRAJRole?.findByIdAndUpdate(id, data, { new: true });
+  const role = getModel("GIRIRAJRole");
+  return await role.findByIdAndUpdate(id, data, { new: true });
 };
 
 const deleteRole = async (id) => {
-  return await girirajModels?.GIRIRAJRole?.findByIdAndDelete(id);
+    const role = getModel("GIRIRAJRole");
+  return await role.findByIdAndDelete(id);
 };
 
 const createRoleUser = async (data) => {
@@ -466,20 +473,23 @@ const createRoleUser = async (data) => {
   if (!name || !email || !password || !roleId) {
     throw new Error("Name, email, password, and roleId are required.");
   }
+    const roleModel = getModel("GIRIRAJRole");
+    const roleUser = getModel("GIRIRAJRoleUser");
 
-  const role = await girirajModels?.GIRIRAJRole?.findById(roleId).lean();
+
+  const role = await roleModel.findById(roleId).lean();
   if (!role) {
     throw new Error("Invalid roleId. Role not found.");
   }
 
-  const existingUser = await girirajModels?.GIRIRAJRoleUser?.findOne({ email }).lean();
+  const existingUser = await roleUser.findOne({ email }).lean();
   if (existingUser) {
     throw new Error("Email already exists.");
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const newUser = await girirajModels?.GIRIRAJRoleUser?.create({
+  const newUser = await roleUser.create({
     name,
     email,
     password: hashedPassword,
@@ -516,11 +526,13 @@ const getRoleUserById = async (id) => {
 };
 
 const updateRoleUser = async (id, data) => {
-  return await girirajModels?.GIRIRAJRoleUser?.findByIdAndUpdate(id, data, { new: true });
+    const roleUser = getModel("GIRIRAJRoleUser");
+  return await roleUser.findByIdAndUpdate(id, data, { new: true });
 };
 
 const deleteRoleUser = async (id) => {
-  return await girirajModels?.GIRIRAJRoleUser?.findByIdAndDelete(id);
+    const roleUser = getModel("GIRIRAJRoleUser");
+  return await roleUser.findByIdAndDelete(id);
 };
 
 
@@ -528,9 +540,10 @@ const forwardConcernToDepartment = async (concernId, department, data, userId) =
   if (!CONCERN_KEYS.includes(department)) {
     throw new Error("Invalid department name");
   }
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
 
   // ✅ Don't use .lean() here — we need a real Mongoose document
-  const concern = await girirajModels?.GIRIRAJIPDConcern.findById(concernId);
+  const concern = await IPDConcern.findById(concernId);
   if (!concern) {
     throw new Error("Concern not found");
   }
@@ -557,7 +570,9 @@ const forwardConcernToDepartment = async (concernId, department, data, userId) =
   const deptName = extractDepartment(concern) || department;
 
   // ✅ Notify role users
-  const roleUsers = await girirajModels.GIRIRAJRoleUser.find({
+    const roleUser = getModel("GIRIRAJRoleUser");
+  
+  const roleUsers = await roleUser.find({
     $or: [{ department: deptName }, { departments: { $in: [deptName] } }],
   })
     .populate({ path: "user", select: "fcmTokens" })
@@ -590,7 +605,9 @@ const getConcernsByDepartment = async (department) => {
     throw new Error("Invalid department name");
   }
 
-  return await girirajModels?.GIRIRAJIPDConcern.find({
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
+
+  return await IPDConcern.find({
     [department]: { $exists: true, $ne: null },
   }).lean().populate("consultantDoctorName");
 };
@@ -670,10 +687,11 @@ async function normalizeDoctor(value, fallback) {
   if (typeof value === "object" && value.name) {
     return { name: value.name, qualification: value.qualification || "" };
   }
+  const doctor = getModel("GIRIRAJDoctor");
 
   // If value is a plain ObjectId (not populated yet)
   if (/^[0-9a-fA-F]{24}$/.test(String(value))) {
-    const doc = await girirajModels.GIRIRAJDoctor.findById(value).lean()
+    const doc = await doctor.findById(value).lean()
       .select("name qualification")
       .lean();
     return doc ? { name: doc.name, qualification: doc.qualification || "" } : { name: fallback || "-", qualification: "" };
@@ -1285,7 +1303,8 @@ async function getDashboard({ from, to, modules = [], loginType }) {
 
 
 const escalateConcern = async (concernId, { level, note, userId }) => {
-  const concern = await girirajModels?.GIRIRAJIPDConcern.findById(concernId);
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
+  const concern = await IPDConcern.findById(concernId);
   if (!concern) throw new Error("Concern not found");
 
   // 🧭 Static mapping (as per your fixed users)
@@ -1309,10 +1328,11 @@ const escalateConcern = async (concernId, { level, note, userId }) => {
   concern.escalations.push(escalation);
   concern.status = "escalated";
   await concern.save();
+  const user = getModel("GIRIRAJUser");
 
   // 🟣 If mapped user found, send FCM notification
   if (targetUserId) {
-    const targetUser = await girirajModels.GIRIRAJUser.findById(targetUserId)
+    const targetUser = await user.findById(targetUserId)
       .select("name fcmTokens email")
       .lean();
 
@@ -1450,8 +1470,9 @@ function hasValidData(deptData) {
 }
 
 const getConcernHistory = async (concernId) => {
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
   // 1️⃣ Fetch concern with full populated references
-  const concernDoc = await girirajModels?.GIRIRAJIPDConcern.findById(concernId)
+  const concernDoc = await IPDConcern.findById(concernId)
     .populate("escalations.escalatedBy", "name email")
     .populate("resolution.resolvedBy", "name email")
     .populate("forwards.forwardedBy", "name email")
@@ -1695,7 +1716,8 @@ const updateProgressRemarkService = async (complaintId, updateNote, userId) => {
 
 
 const createDoctor = async (payload) => {
-  return await girirajModels.GIRIRAJDoctor?.create(payload);
+  const doctor = getModel("GIRIRAJDoctor");
+  return await doctor.create(payload);
 };
 
 const getDoctors = async () => {
@@ -1722,11 +1744,13 @@ const getDoctorById = async (id) => {
 
  
 const deleteDoctor = async (id) => {
-  return await girirajModels.GIRIRAJDoctor?.findByIdAndDelete(id);
+  const doctor = getModel("GIRIRAJDoctor");
+  return await doctor.findByIdAndDelete(id);
 }
 
 const updateDoctor = async (id, update) => {
-  const patient = await girirajModels.GIRIRAJDoctor?.findByIdAndUpdate(id, update, { new: true });
+  const doctor = getModel("GIRIRAJDoctor");
+  const patient = await doctor.findByIdAndUpdate(id, update, { new: true });
   if (!patient) throw new ApiError(404, 'Patient not found');
   return patient;
 };
@@ -1745,9 +1769,10 @@ const sendAndSaveNotification = async ({ tokens, title, body, data = {}, role, s
     };
 
     const response = await admin.messaging().sendEachForMulticast(message);
+    const notification = getModel("GIRIRAJNotification");
 
     // ✅ Save into DB
-    const savedNotification = await girirajModels?.GIRIRAJNotification.create({
+    const savedNotification = await notification.create({
       title,
       body,
       data,
@@ -1895,7 +1920,8 @@ async function getAllComplaintDetails(useBackup = false) {
 }
 
 const createBed = async (payload) => {
-  return await girirajModels.GIRIRAJBed?.create(payload);
+  const bed = getModel("GIRIRAJBed");
+  return await bed.create(payload);
 };
 
 const getBeds = async () => {
@@ -1921,11 +1947,13 @@ const getBedById = async (id) => {
 };
 
 const deleteBed = async (id) => {
-  return await girirajModels.GIRIRAJBed?.findByIdAndDelete(id);
+  const bed = getModel("GIRIRAJBed");
+  return await bed.findByIdAndDelete(id);
 }
 
 const updatedBed = async (id, update) => {
-  const patient = await girirajModels.GIRIRAJBed?.findByIdAndUpdate(id, update, { new: true });
+  const bed = getModel("GIRIRAJBed");
+  const patient = await bed.findByIdAndUpdate(id, update, { new: true });
   if (!patient) throw new ApiError(404, 'Patient not found');
   return patient;
 };
@@ -1956,9 +1984,12 @@ const validateBedNumber = async (bedNo) => {
 
 const getComplaintSummary = async (useBackup = false) => {
   try {
+    const IPDConcern = getModel("GIRIRAJIPDConcern");
+  const bed = getModel("GIRIRAJBed");
+    
     // 🧠 Load models from global registry (dual DB safe)
-    let ComplaintModel = girirajModels?.GIRIRAJIPDConcern;
-    let BedModel = girirajModels?.GIRIRAJBed;
+    let ComplaintModel = IPDConcern;
+    let BedModel = bed;
 
     // ✅ Handle dual-model wrappers ({ primary, secondary })
     if (ComplaintModel && typeof ComplaintModel.find !== "function") {
@@ -2167,9 +2198,10 @@ async function partialResolveConcern(
 
 
 const partialInProgressConcern = async (concernId, { department, note, userId }) => {
-  let concern = await girirajModels.GIRIRAJIPDConcern.findById(concernId);
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
+  let concern = await IPDConcern.findById(concernId);
   if (!concern) {
-    concern = await girirajModels.GIRIRAJIPDConcern.findOne({ complaintId: concernId });
+    concern = await IPDConcern.findOne({ complaintId: concernId });
   }
   if (!concern) throw new Error("Concern not found");
   if (!department) throw new Error("Department is required");
@@ -2202,13 +2234,14 @@ const partialInProgressConcern = async (concernId, { department, note, userId })
 
 const partialEscalateConcern = async (concernId, { department, note, level, userId }) => {
   let concern = null;
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
 
   // 🔹 Find concern by ID or complaintId
   if (mongoose.Types.ObjectId.isValid(concernId)) {
-    concern = await girirajModels.GIRIRAJIPDConcern.findById(concernId);
+    concern = await IPDConcern.findById(concernId);
   }
   if (!concern) {
-    concern = await girirajModels.GIRIRAJIPDConcern.findOne({ complaintId: concernId });
+    concern = await IPDConcern.findOne({ complaintId: concernId });
   }
 
   if (!concern) throw new Error("Concern not found");
@@ -2241,10 +2274,11 @@ const partialEscalateConcern = async (concernId, { department, note, level, user
   concern.updatedAt = new Date();
 
   await concern.save();
+  const user = getModel("GIRIRAJUser");
 
   // ✅ Send FCM Notification (optional)
   if (toUserId) {
-    const targetUser = await girirajModels.GIRIRAJUser.findById(toUserId)
+    const targetUser = await user.findById(toUserId)
       .select("name fcmTokens")
       .lean();
 
@@ -2318,7 +2352,8 @@ const getPartialResolveDetails = async (concernId) => {
 };
 
 const createNote = async (payload) => {
-  const note = await girirajModels.GIRIRAJNote.create(payload);
+  const notes = getModel("GIRIRAJNote");
+  const note = await notes.create(payload);
   return await note.populate({
     path: "userId",
     select: "name email",
@@ -2327,19 +2362,23 @@ const createNote = async (payload) => {
 };
 
 const getAllNotes = async () => {
-  return await girirajModels.GIRIRAJNote?.find().lean().sort({ createdAt: -1 });
+  const notes = getModel("GIRIRAJNote");
+  return await notes.find().lean().sort({ createdAt: -1 });
 }
 
 const getNoteById = async (id) => {
-  return await girirajModels.GIRIRAJNote?.findById(id).lean();
+  const notes = getModel("GIRIRAJNote");
+  return await notes.findById(id).lean();
 }
 
 const deleteNote = async (id) => {
-  return await girirajModels.GIRIRAJNote?.findByIdAndDelete(id);
+  const notes = getModel("GIRIRAJNote");
+  return await notes.findByIdAndDelete(id);
 }
 
 const updateNote = async (id, update) => {
-  const patient = await girirajModels.GIRIRAJNote?.findByIdAndUpdate(id, update, { new: true });
+  const notes = getModel("GIRIRAJNote");
+  const patient = await notes.findByIdAndUpdate(id, update, { new: true });
   if (!patient) throw new ApiError(404, 'Data not found');
   return patient;
 };
@@ -2350,6 +2389,7 @@ const getNotesByUserId = async (userId) => {
       console.warn("⚠️ No userId provided to getNotesByUserId");
       return [];
     }
+  const note = getModel("GIRIRAJNote");
 
     // ✅ Validate ObjectId format
     if (!mongoose.Types.ObjectId.isValid(userId)) {
@@ -2360,7 +2400,7 @@ const getNotesByUserId = async (userId) => {
     const objectId = new mongoose.Types.ObjectId(userId);
 
     // ✅ Fetch all notes where userId matches (regardless of ref type)
-    const notes = await girirajModels.GIRIRAJNote.find({
+    const notes = await note.find({
       userId: objectId,
     })
       .populate("userId") // optional: populate user info if needed
@@ -2379,10 +2419,12 @@ const getNotesByUserId = async (userId) => {
 const createTask = async (payload) => {
   const { userId } = payload;
   if (!userId) throw new ApiError(400, "userId is required");
+  const user = getModel("GIRIRAJRoleUser");
+  const task = getModel("GIRIRAJTask");
 
   // 🔍 Automatically detect which model the ID belongs to (User or RoleUser)
   let userModel = "GIRIRAJUser";
-  const isRoleUser = await girirajModels.GIRIRAJRoleUser?.exists({ _id: userId });
+  const isRoleUser = await user.exists({ _id: userId });
   if (isRoleUser) userModel = "GIRIRAJRoleUser";
 
   const taskData = {
@@ -2390,13 +2432,14 @@ const createTask = async (payload) => {
     userModel,
   };
 
-  const newTask = await girirajModels.GIRIRAJTask?.create(taskData);
+  const newTask = await task.create(taskData);
   return newTask;
 };
 
 // 🟣 Get all tasks (for admin only)
 const getAllTask = async () => {
-  return await girirajModels.GIRIRAJTask?.find()
+  const task = getModel("GIRIRAJTask");
+  return await task.find()
     .populate("userId", "name email")
     .sort({ createdAt: -1 })
     .lean();
@@ -2404,19 +2447,21 @@ const getAllTask = async () => {
 
 // 🔹 Get task by ID
 const getTaskById = async (id) => {
-  return await girirajModels.GIRIRAJTask?.findById(id)
+  return await task.findById(id)
     .populate("userId", "name email")
     .lean();
 };
 
 // 🔹 Get all tasks by userId (for normal users)
 const getTasksByUserId = async (userId) => {
+  const task = getModel("GIRIRAJTask");
+
   if (!userId) throw new ApiError(400, "userId is required");
 
   const isValid = mongoose.Types.ObjectId.isValid(userId);
   if (!isValid) throw new ApiError(400, "Invalid userId format");
 
-  const tasks = await girirajModels.GIRIRAJTask?.find({ userId })
+  const tasks = await task.find({ userId })
     .sort({ createdAt: -1 })
     .lean();
 
@@ -2425,14 +2470,17 @@ const getTasksByUserId = async (userId) => {
 
 // 🔸 Delete task
 const deleteTask = async (id) => {
-  const deleted = await girirajModels.GIRIRAJTask?.findByIdAndDelete(id);
+  const task = getModel("GIRIRAJTask");
+  const deleted = await task.findByIdAndDelete(id);
   if (!deleted) throw new ApiError(404, "Task not found");
   return deleted;
 };
 
 // 🔸 Update task
 const updateTask = async (id, update) => {
-  const task = await girirajModels.GIRIRAJTask?.findByIdAndUpdate(id, update, { new: true });
+  const tasks = getModel("GIRIRAJTask");
+
+  const task = await tasks.findByIdAndUpdate(id, update, { new: true });
   if (!task) throw new ApiError(404, "Task not found");
   return task;
 };
@@ -2454,11 +2502,14 @@ const getInternalComplaintById = async (id, useBackup = false) => {
 };
 
 const deleteInternalComplaint = async (id) => {
-  return await girirajModels.GIRIRAJInternalComplaint?.findByIdAndDelete(id);
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+  return await InternalComplaint.findByIdAndDelete(id);
 }
 
 const updateInternalComplaint = async (id, update) => {
-  const patient = await girirajModels.GIRIRAJInternalComplaint?.findByIdAndUpdate(id, update, { new: true });
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+
+  const patient = await InternalComplaint.findByIdAndUpdate(id, update, { new: true });
   if (!patient) throw new ApiError(404, 'Complaint not found');
   return patient;
 };
@@ -2472,8 +2523,9 @@ const forwardInternalComplaint = async (
   if (!INTERNAL_DEPT_KEYS.includes(department)) {
     throw new Error("Invalid department name");
   }
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
 
-  const complaint = await girirajModels.GIRIRAJInternalComplaint.findById(
+  const complaint = await InternalComplaint.findById(
     complaintId
   );
   if (!complaint) throw new Error("Complaint not found");
@@ -2492,7 +2544,8 @@ const forwardInternalComplaint = async (
 
   // 🔔 Notify next department
   const tokens = [];
-  const roleUsers = await girirajModels.GIRIRAJRoleUser.find({
+  const roleUser = getModel("GIRIRAJRoleUser");
+  const roleUsers = await roleUser.find({
     $or: [{ department }, { departments: { $in: [department] } }],
   })
     .populate({ path: "user", select: "fcmTokens" })
@@ -2519,7 +2572,8 @@ const forwardInternalComplaint = async (
    🔹 ESCALATE INTERNAL COMPLAINT
 ---------------------------------------------*/
 const escalateInternalComplaint = async (complaintId, { level, note, userId }) => {
-  const complaint = await girirajModels.GIRIRAJInternalComplaint.findById(
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+  const complaint = await InternalComplaint.findById(
     complaintId
   );
   if (!complaint) throw new Error("Complaint not found");
@@ -2540,9 +2594,10 @@ const escalateInternalComplaint = async (complaintId, { level, note, userId }) =
   });
   complaint.status = "escalated";
   await complaint.save();
+  const user = getModel("GIRIRAJUser");
 
   if (targetUserId) {
-    const targetUser = await girirajModels.GIRIRAJUser.findById(targetUserId)
+    const targetUser = await user.findById(targetUserId)
       .select("name fcmTokens")
       .lean();
 
@@ -2570,7 +2625,8 @@ const resolveInternalComplaint = async (
   complaintId,
   { note, proof, userId }
 ) => {
-  const complaint = await girirajModels.GIRIRAJInternalComplaint.findById(
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+  const complaint = await InternalComplaint.findById(
     complaintId
   );
   if (!complaint) throw new Error("Complaint not found");
@@ -2585,7 +2641,8 @@ const resolveInternalComplaint = async (
   await complaint.save();
 
   // 🔔 Notify HR/Admin
-  const hrUsers = await girirajModels.GIRIRAJRoleUser.find({
+  const user = getModel("GIRIRAJRoleUser");
+  const hrUsers = await user.find({
     $or: [{ department: "HR" }, { departments: { $in: ["HR"] } }],
   })
     .populate({ path: "user", select: "fcmTokens" })
@@ -2619,9 +2676,11 @@ const updateInternalProgress = async (
   note,
   userId
 ) => {
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+
   const complaint =
-    (await girirajModels.GIRIRAJInternalComplaint.findById(complaintId)) ||
-    (await girirajModels.GIRIRAJInternalComplaint.findOne({
+    (await InternalComplaint.findById(complaintId)) ||
+    (await InternalComplaint.findOne({
       complaintId,
     }));
 
@@ -2653,7 +2712,8 @@ const updateInternalProgress = async (
 ---------------------------------------------*/
 const getInternalComplaintHistory = async (concernId) => {
   // 1️⃣ Fetch concern with full populated references
-  const concernDoc = await girirajModels?.GIRIRAJInternalComplaint.findById(concernId)
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+  const concernDoc = await InternalComplaint.findById(concernId)
     .populate("escalations.escalatedBy", "name email")
     .populate("resolution.resolvedBy", "name email")
     .populate("forwards.forwardedBy", "name email")
@@ -2823,9 +2883,10 @@ const partialInProgressInternal = async (
   complaintId,
   { department, note, userId }
 ) => {
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
   let complaint =
-    (await girirajModels.GIRIRAJInternalComplaint.findById(complaintId)) ||
-    (await girirajModels.GIRIRAJInternalComplaint.findOne({ complaintId }));
+    (await InternalComplaint.findById(complaintId)) ||
+    (await InternalComplaint.findOne({ complaintId }));
 
   if (!complaint) throw new Error("Complaint not found");
   if (!department) throw new Error("Department is required");
@@ -2875,14 +2936,15 @@ const partialEscalateInternal = async (
   { department, note, level, userId }
 ) => {
   let complaint = null;
+  const internalComplaint = getModel("GIRIRAJInternalComplaint");
 
   if (mongoose.Types.ObjectId.isValid(complaintId)) {
-    complaint = await girirajModels.GIRIRAJInternalComplaint.findById(
+    complaint = await internalComplaint.findById(
       complaintId
     );
   }
   if (!complaint) {
-    complaint = await girirajModels.GIRIRAJInternalComplaint.findOne({
+    complaint = await internalComplaint.findOne({
       complaintId,
     });
   }
@@ -2911,10 +2973,11 @@ const partialEscalateInternal = async (
   complaint.status = "escalated";
   complaint.updatedAt = new Date();
   await complaint.save();
+  const user = getModel("GIRIRAJUser");
 
   // 🔔 Notify Escalation Target
   if (toUserId) {
-    const targetUser = await girirajModels.GIRIRAJUser.findById(toUserId)
+    const targetUser = await user.findById(toUserId)
       .select("name fcmTokens")
       .lean();
 
@@ -2947,7 +3010,8 @@ const partialResolveInternal = async (
   complaintId,
   { department, note, proof, userId }
 ) => {
-  const complaint = await girirajModels.GIRIRAJInternalComplaint.findById(
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+  const complaint = await InternalComplaint.findById(
     complaintId
   );
   if (!complaint) throw new Error("Complaint not found");
@@ -3011,7 +3075,9 @@ const partialResolveInternal = async (
    🔹 PARTIAL RESOLVE DETAILS
 ---------------------------------------------*/
 const getPartialResolveInternalDetails = async (complaintId) => {
-  const complaint = await girirajModels.GIRIRAJInternalComplaint.findById(
+  const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+
+  const complaint = await InternalComplaint.findById(
     complaintId
   )
     .populate("resolution.resolvedBy", "name")
@@ -3254,9 +3320,10 @@ const partialAdminInProgressConcern = async (
   concernId,
   { department, note, userId }
 ) => {
-  let concern = await girirajModels.GIRIRAJIPDConcern.findById(concernId);
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
+  let concern = await IPDConcern.findById(concernId);
   if (!concern)
-    concern = await girirajModels.GIRIRAJIPDConcern.findOne({ complaintId: concernId });
+    concern = await IPDConcern.findOne({ complaintId: concernId });
   if (!concern) throw new Error("Concern not found");
   if (!department) throw new Error("Department is required");
 
@@ -3293,10 +3360,11 @@ const partialAdminEscalateConcern = async (
 
   // find by ObjectId or complaintId
   if (mongoose.Types.ObjectId.isValid(concernId)) {
-    concern = await girirajModels.GIRIRAJIPDConcern.findById(concernId);
+    const IPDConcern = getModel("GIRIRAJIPDConcern");
+    concern = await IPDConcern.findById(concernId);
   }
   if (!concern) {
-    concern = await girirajModels.GIRIRAJIPDConcern.findOne({ complaintId: concernId });
+    concern = await IPDConcern.findOne({ complaintId: concernId });
   }
 
   if (!concern) throw new Error("Concern not found");
@@ -3323,10 +3391,11 @@ const partialAdminEscalateConcern = async (
   concern.status = "escalated";
   concern.updatedAt = new Date();
   await concern.save();
+  const user = getModel("GIRIRAJUser");
 
   // optional push notification
   if (toUserId) {
-    const targetUser = await girirajModels.GIRIRAJUser.findById(toUserId)
+    const targetUser = await user.findById(toUserId)
       .select("name fcmTokens")
       .lean();
     if (targetUser?.fcmTokens?.length) {
@@ -3353,7 +3422,8 @@ const partialAdminEscalateConcern = async (
 
 /* --------------------- GET PARTIAL RESOLUTION DETAILS --------------------- */
 const getAdminPartialResolveDetails = async (concernId) => {
-  const concern = await girirajModels.GIRIRAJIPDConcern.findById(concernId)
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
+  const concern = await IPDConcern.findById(concernId)
     .populate("resolution.resolvedBy", "name")
     .lean();
 
@@ -3397,9 +3467,10 @@ const getAdminPartialResolveDetails = async (concernId) => {
 const createTaskList = async (payload) => {
   const { userId } = payload;
   if (!userId) throw new ApiError(400, "userId is required");
+  const roleUser = getModel("GIRIRAJRoleUser");
 
   let userModel = "GIRIRAJUser";
-  const isRoleUser = await girirajModels.GIRIRAJRoleUser?.exists({ _id: userId });
+  const isRoleUser = await roleUser.exists({ _id: userId });
   if (isRoleUser) userModel = "GIRIRAJRoleUser";
 
   const taskData = {
@@ -3407,12 +3478,13 @@ const createTaskList = async (payload) => {
     userModel,
   };
 
-  const newTask = await girirajModels.GIRIRAJTaskList?.create(taskData);
+  const newTask = await roleUser.create(taskData);
   return newTask;
 };
 
 const getAllTaskList = async () => {
-  return await girirajModels.GIRIRAJTaskList?.find()
+  const task = getModel("GIRIRAJTaskList");
+  return await task?.find()
     .populate("userId", "name email")
     .sort({ createdAt: -1 })
     .lean();
@@ -3443,8 +3515,9 @@ const getTasksByList = async (listId, userId, userModel) => {
   }
 
   console.log("🧩 Task Query:", query);
+  const task = getModel("GIRIRAJTask");
 
-  const tasks = await girirajModels?.GIRIRAJTask.find(query)
+  const tasks = await task.find(query)
     .sort({ date: 1, time: 1 })
     .lean();
 
