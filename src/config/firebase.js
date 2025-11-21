@@ -1,25 +1,31 @@
-// config/firebase.js
 import admin from "firebase-admin";
-import fs from "fs";
+import { readFileSync } from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+/* -----------------------------------------
+   Detect environment (local vs production)
+------------------------------------------ */
 
-const keyPath = path.join(__dirname, "./serviceAccountKey.json");
-const serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+// Windows / Local path
+const LOCAL_PATH = "D:/giriraj_backend/src/config/serviceAccountKey.json";
 
-console.log("🔥 Loaded Firebase Key:", keyPath);
+// Hostinger VPS path
+const VPS_PATH = "/var/www/firebase-key.json";
+
+// Automatically choose path
+const KEY_PATH = process.platform === "win32" ? LOCAL_PATH : VPS_PATH;
+
+console.log("🔑 Loading Firebase key from:", KEY_PATH);
+
+const serviceAccount = JSON.parse(readFileSync(KEY_PATH, "utf8"));
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert({
-      project_id: serviceAccount.project_id,
-      client_email: serviceAccount.client_email,
-      private_key: serviceAccount.private_key.replace(/\\n/g, "\n"),
-    }),
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
+export const db = admin.firestore();
+export const auth = admin.auth();
+export const messaging = admin.messaging();
 export default admin;
