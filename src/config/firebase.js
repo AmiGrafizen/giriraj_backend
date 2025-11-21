@@ -6,7 +6,6 @@ import path from "path";
    Detect environment (local vs production)
 ------------------------------------------ */
 
-// Windows / Local path
 const LOCAL_PATH = "D:/giriraj_backend/src/config/serviceAccountKey.json";
 
 // Hostinger VPS path
