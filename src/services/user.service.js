@@ -253,18 +253,18 @@ const createIPDConcern = async (payload, io) => {
       console.log(`📨 FCM sent to topic: ${topicName}`);
 
       // ⚡ Centrifugo broadcast
-      await publishToCentrifugo(topicName, {
-        type: "new_complaint",
-        title,
-        message: body,
-        patientName: populatedComplaint.patientName,
-        bedNo: populatedComplaint.bedNo,
-        consultantDoctorName:
-          populatedComplaint?.consultantDoctorName?.name || "N/A",
-        department: "All Departments",
-        createdAt: populatedComplaint.createdAt,
-      });
-      console.log(`📡 Centrifugo event pushed to channel: ${topicName}`);
+      // await publishToCentrifugo(topicName, {
+      //   type: "new_complaint",
+      //   title,
+      //   message: body,
+      //   patientName: populatedComplaint.patientName,
+      //   bedNo: populatedComplaint.bedNo,
+      //   consultantDoctorName:
+      //     populatedComplaint?.consultantDoctorName?.name || "N/A",
+      //   department: "All Departments",
+      //   createdAt: populatedComplaint.createdAt,
+      // });
+      // console.log(`📡 Centrifugo event pushed to channel: ${topicName}`);
     } else {
       // 🚀 Department-wise notifications
       for (const deptKey of involvedDepartments) {
