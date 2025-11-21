@@ -12,6 +12,46 @@ const otpStore = {};
 const BCRYPT_HASH_RE = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 
 
+function getModel(modelName) {
+  if (!girirajModels || typeof girirajModels !== "object") {
+    console.error("❌ girirajModels not initialized or invalid");
+    return null;
+  }
+
+  const allKeys = Object.keys(girirajModels);
+  if (!allKeys.length) {
+    console.error("⚠️ No models loaded in girirajModels");
+    return null;
+  }
+
+  // 🧠 Try to find by case-insensitive or partial match
+  const lowerTarget = modelName.toLowerCase();
+  const foundKey = allKeys.find(
+    (k) => k.toLowerCase() === lowerTarget || k.toLowerCase().includes(lowerTarget)
+  );
+
+  if (!foundKey) {
+    console.warn(`⚠️ Model "${modelName}" not found. Available models:`, allKeys);
+    return null;
+  }
+
+  let model = girirajModels[foundKey];
+
+  // If wrapped { primary, secondary }, unwrap safely
+  if (model && typeof model.find !== "function") {
+    model = model.primary || model.secondary || model.default || model.model;
+  }
+
+  if (!model || typeof model.find !== "function") {
+    console.error(`"${foundKey}" is not a valid Mongoose model.`, model);
+    return null;
+  }
+
+  console.log(`✅ Using model: ${foundKey}`);
+  return model;
+}
+
+
 // const createNewUser = async ({ name, email, mobileNumber }) => {
 //     const isMobileTaken = await girirajModels?.GIRIRAJUser.isMobileNumberTaken(mobileNumber);
 //   if (isMobileTaken) {
@@ -154,11 +194,15 @@ const loginAdmin = async (email, password) => {
   if (!email) throw new ApiError(httpStatus.BAD_REQUEST, "email is required!");
   if (!password) throw new ApiError(httpStatus.BAD_REQUEST, "password is required!");
 
-  // ✅ Fetch user with password
-  const user = await girirajModels?.GIRIRAJUser?.findOne({ email }).select("+password");
+  // ✅ ALWAYS FETCH MODEL USING getModel()
+  const User = getModel("GIRIRAJUser");
+  if (!User) throw new ApiError(500, "User model not found");
+
+  // ✅ Safe fetch with password
+  const user = await User.findOne({ email }).select("+password");
   if (!user) throw new ApiError(httpStatus.UNAUTHORIZED, "Incorrect email or password");
 
-  // ✅ Compare password safely
+  // ✅ Compare password
   const isMatch = await user.isPasswordMatch(password);
   if (!isMatch) throw new ApiError(httpStatus.UNAUTHORIZED, "Incorrect email or password");
 
@@ -169,27 +213,24 @@ const loginAdmin = async (email, password) => {
   // 🧠 COMETCHAT INTEGRATION (Auto create + token generation)
   // --------------------------------------------------------------------
   try {
-    const uid = `user_${user._id}`; 
+    const uid = `user_${user._id}`;
     const name = user.name || user.email;
 
     await ensureCometUser(uid, name, user.avatar || "");
 
-    // ✅ Generate CometChat auth token for frontend login
+    // Generate CometChat auth token
     const cometToken = await generateCometAuthToken(uid);
-    console.log('cometToken', cometToken)
 
-    // ✅ Return full response including cometToken
     return {
       success: true,
       user,
       tokens,
-      cometToken, 
+      cometToken,
       message: "Logged in successfully!",
     };
   } catch (error) {
     console.error("CometChat integration failed:", error.message);
 
-    // Still return normal login response if CometChat fails
     return {
       success: true,
       user,
@@ -198,7 +239,6 @@ const loginAdmin = async (email, password) => {
     };
   }
 };
-
 
 
   const getReferralPrice = async (userId) => {
@@ -334,12 +374,17 @@ const loginAdmin = async (email, password) => {
     }
   };
 
-  const findUserByIdentifierService = async (identifier) => {
+const findUserByIdentifierService = async (identifier) => {
   try {
-    const user = await girirajModels?.GIRIRAJRoleUser.findOne({
+    const RoleUser = getModel("GIRIRAJRoleUser"); // <-- FIXED
+    if (!RoleUser) {
+      throw new Error("GIRIRAJRoleUser model not found");
+    }
+
+    const user = await RoleUser.findOne({
       $or: [
-        { name: { $regex: `^${identifier}$`, $options: "i" } },  // username (case insensitive)
-        { email: { $regex: `^${identifier}$`, $options: "i" } }, // email (case insensitive)
+        { name: { $regex: `^${identifier}$`, $options: "i" } },
+        { email: { $regex: `^${identifier}$`, $options: "i" } },
       ],
     })
       .populate("roleId")
