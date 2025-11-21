@@ -1453,36 +1453,62 @@ const escalateConcern = async (concernId, { level, note, userId }) => {
 };
 
 
-const resolveConcern = async (concernId, { note, proof, userId }) => {
-  const concern = await girirajModels?.GIRIRAJIPDConcern.findById(concernId);
-  if (!concern) throw new Error("Concern not found");
+const resolveConcern = async (
+  complaintId,
+  { department, actionType, note = "", proof = [], userId }
+) => {
+  const ComplaintModel = getModel("GIRIRAJIPDConcern");
+  const UserModel = getModel("GIRIRAJUser");
 
-  // 1️⃣ Mark concern as resolved
-  concern.resolution = {
+  // 1️⃣ Fetch complaint
+  const complaint = await ComplaintModel.findById(complaintId);
+  if (!complaint) throw new Error("Complaint not found");
+
+  if (!department || !complaint[department]) {
+    throw new Error("Invalid department or no complaint registered for this department");
+  }
+
+  const section = complaint[department];
+
+  // 2️⃣ Set RCA / CA / PA
+  section.actionType = actionType;
+  section.actionNote = note;
+
+  // 3️⃣ Update resolution
+  section.resolution = {
     note,
     proof,
     resolvedBy: userId,
     resolvedAt: new Date(),
+    resolvedType: "staff",
   };
-  concern.status = "resolved";
-  await concern.save();
 
-  // 2️⃣ Notify admins + dept users
-  const department = extractDepartment(concern);
+  // 4️⃣ Mark this department resolved
+  section.status = "resolved";
 
-  const admins = await girirajModels.GIRIRAJUser.find({ role: "admin" })
+  // 5️⃣ Update full complaint status
+  const modules = complaint.modules;
+
+  const resolvedCount = modules.filter(
+    (m) => complaint[m]?.status === "resolved"
+  ).length;
+
+  complaint.status =
+    resolvedCount === modules.length ? "resolved" : "partial";
+
+  await complaint.save();
+
+  // 6️⃣ Notify Admin & Department Users
+  const admins = await UserModel.find({ role: "admin" })
     .select("deviceToken")
     .lean();
 
-  let deptUsers = [];
-  if (department) {
-    deptUsers = await girirajModels.GIRIRAJUser.find({
-      role: "user",
-      department,
-    })
-      .select("deviceToken")
-      .lean();
-  }
+  const deptUsers = await UserModel.find({
+    role: "user",
+    department,
+  })
+    .select("deviceToken")
+    .lean();
 
   const tokens = [
     ...admins.map((u) => u.deviceToken),
@@ -1492,32 +1518,39 @@ const resolveConcern = async (concernId, { note, proof, userId }) => {
   if (tokens.length > 0) {
     await sendNotification({
       tokens,
-      title: "Concern Resolved",
-      body: `Concern for patient ${concern.patientName || "Unknown"} has been resolved.`,
+      title: `Complaint Resolved (${department})`,
+      body: `${department} team has resolved their part of the complaint.`,
       data: {
-        concernId: String(concern._id),
-        department: department || "General",
-        type: "IPD_CONCERN_RESOLVED",
+        complaintId: String(complaint._id),
+        department,
+        type: "COMPLAINT_RESOLVED",
       },
     });
   }
 
-  // 3️⃣ Optional WhatsApp message
-  if (concern.contact) {
+  // 7️⃣ WhatsApp notification (optional)
+  if (complaint.contactNo) {
     try {
       await sendResolveMessage({
-        phoneNumber: concern.contact,
-        patientName: concern.patientName || "Patient",
+        phoneNumber: complaint.contactNo,
+        employeeName: complaint.employeeName,
+        department,
       });
     } catch (err) {
-      console.error("WhatsApp message failed:", err.response?.data || err.message);
+      console.error("WhatsApp failed:", err.message);
     }
-  } else {
-    console.warn("⚠️ Concern has no patient contact. WhatsApp skipped.");
   }
 
-  return concern;
+  return {
+    success: true,
+    message:
+      complaint.status === "resolved"
+        ? "Complaint fully resolved."
+        : `Department ${department} resolved. Complaint is partially open.`,
+    complaint,
+  };
 };
+
 
 
 
@@ -2089,7 +2122,8 @@ const getComplaintSummary = async (useBackup = false) => {
 
 
 async function getServiceWiseSummary() {
-  const complaints = await girirajModels?.GIRIRAJIPDConcern.find({}).lean();
+  const IPDModel = getModel("GIRIRAJIPDConcern");
+  const complaints = await IPDModel.find({}).lean();
 
   const serviceCounts = {
     doctor_service: 0,
@@ -2217,60 +2251,58 @@ const getFrequentOPDRatings = async () => {
 
 
 
-const partialResolveConcern = async (concernId, { department, note, proof, userId }) => {
-  const concern = await girirajModels?.GIRIRAJIPDConcern.findById(concernId);
-  if (!concern) throw new Error("Concern not found");
-  if (!department) throw new Error("Department is required for partial resolve");
+const partialResolveConcern = async (
+  complaintId,
+  { department, note = "", proof = [], userId }
+) => {
+  const ComplaintModel = getModel("GIRIRAJIPDConcern");
 
-  // Ensure department exists
-  if (!concern[department]) concern[department] = {};
-  concern[department].status = "resolved";
-  concern[department].resolution = {
-    note: note || "",
-    proof: proof || [],
-    resolvedBy: userId || null,
+  // 1️⃣ Fetch complaint
+  const complaint = await ComplaintModel.findById(complaintId);
+  if (!complaint) throw new Error("Complaint not found");
+
+  if (!department || !complaint[department]) {
+    throw new Error(`Department '${department}' does not exist in this complaint`);
+  }
+
+  const section = complaint[department];
+
+  // 2️⃣ Staff resolves this department
+  section.status = "resolved";
+  section.resolution = {
+    note,
+    proof,
+    resolvedBy: userId,
     resolvedAt: new Date(),
+    resolvedType: "staff",
   };
 
-  // Check all departments
-  const deptKeys = [
-    "doctorServices",
-    "billingServices",
-    "housekeeping",
-    "maintenance",
-    "diagnosticServices",
-    "dietitianServices",
-    "security",
-    "nursing",
-  ];
-  const activeDepts = deptKeys.filter((key) => concern[key] && concern[key].text);
-  const resolvedCount = activeDepts.filter(
-    (key) => concern[key]?.status === "resolved"
+  // 3️⃣ Update overall status
+  const allModules = complaint.modules;
+  const resolvedCount = allModules.filter(
+    (m) => complaint[m]?.status === "resolved"
   ).length;
 
-  // ✅ Only resolve overall if all depts resolved
-  concern.status =
-    resolvedCount === activeDepts.length && activeDepts.length > 0
-      ? "resolved"
-      : "partial";
+  complaint.status =
+    resolvedCount === allModules.length ? "resolved" : "partial";
 
-  concern.updatedAt = new Date();
-  await concern.save();
+  await complaint.save();
 
   return {
     success: true,
     message:
-      concern.status === "resolved"
-        ? "All departments resolved. Complaint closed."
+      complaint.status === "resolved"
+        ? "All departments resolved. Complaint fully closed."
         : `Department ${department} resolved. Complaint remains partially open.`,
     data: {
-      _id: concern._id,
-      status: concern.status,
+      _id: complaint._id,
+      status: complaint.status,
       department,
       note,
     },
   };
 };
+
 
 
 const partialInProgressConcern = async (concernId, { department, note, userId }) => {
@@ -3151,27 +3183,36 @@ const getPartialResolveInternalDetails = async (complaintId) => {
 
 /**
  * Update an IPD Concern as an Admin (resolve / forward / escalate / progress)
- * Handles both partial and full updates
+ * Handles both partial and full updates  
  */
 async function updateAdminAction(id, actionType, data, adminId) {
-  const concern = await girirajModels?.GIRIRAJIPDConcern?.findById(id);
-  if (!concern) throw new Error("Concern not found");
+  const ComplaintModel = getModel("GIRIRAJIPDConcern");
 
-  const { note, proof = [], department, isPartial = false, level, toDepartment } = data;
+  const complaint = await ComplaintModel.findById(id);
+  if (!complaint) throw new Error("Complaint not found");
 
-  // Validate action type
+  const {
+    note = "",
+    proof = [],
+    department,
+    isPartial = false,
+    level,
+    toDepartment,
+    actionTypeForDept = null
+  } = data;
+
   const allowedActions = ["resolved", "forwarded", "escalated", "progress"];
   if (!allowedActions.includes(actionType)) {
     throw new Error(`Invalid action type: ${actionType}`);
   }
 
-  // ✅ Ensure department exists (for partial)
   if (isPartial && !department) {
-    throw new Error("Department is required for partial admin action");
+    throw new Error("Department is required for partial admin update");
   }
 
-  // 🔹 Build admin action object (stored globally)
-  const actionData = {
+  // Save admin metadata
+  complaint.adminActions = complaint.adminActions || {};
+  complaint.adminActions[actionType] = {
     note,
     proof,
     level,
@@ -3179,44 +3220,45 @@ async function updateAdminAction(id, actionType, data, adminId) {
     by: adminId,
     type: actionType,
     isPartial,
-    at: new Date(),
+    at: new Date()
   };
 
-  concern.adminActions = concern.adminActions || {};
-  concern.adminActions[actionType] = actionData;
-
-  // 🔹 Optional audit trail
-  concern.history = concern.history || [];
-  concern.history.push({
+  // Add audit history
+  complaint.history = complaint.history || [];
+  complaint.history.push({
     action: actionType,
     note,
+    proof,
     by: adminId,
     at: new Date(),
     isPartial,
-    affectedDepartments: isPartial ? [department] : [],
+    affectedDepartments: isPartial ? [department] : []
   });
 
-  // 🔹 Helper for updating departments
-  const updateDepartment = (deptKey) => {
-    if (!concern[deptKey]) concern[deptKey] = {};
-    concern[deptKey].updatedByAdmin = true;
-    concern[deptKey].adminNote = note;
+  // Helper for modifying department section
+  const updateDept = (deptKey) => {
+    const sec = complaint[deptKey];
+    if (!sec) return;
+
+    sec.updatedByAdmin = true;
+    sec.adminNote = note;
 
     switch (actionType) {
       case "resolved":
-        concern[deptKey].status = "resolved_by_admin";
-        concern[deptKey].resolvedByAdmin = true;
-        concern[deptKey].resolution = {
-          note,
+        sec.status = "resolved_by_admin";
+        sec.resolution = {
+          actionType: actionTypeForDept,
+          actionNote: note,
           proof,
           resolvedBy: adminId,
           resolvedAt: new Date(),
+          resolvedType: "admin",
         };
         break;
 
       case "forwarded":
-        concern[deptKey].status = "forwarded";
-        concern[deptKey].forward = {
+        sec.status = "forwarded";
+        sec.forward = {
           note,
           toDepartment,
           forwardedBy: adminId,
@@ -3225,8 +3267,8 @@ async function updateAdminAction(id, actionType, data, adminId) {
         break;
 
       case "escalated":
-        concern[deptKey].status = "escalated";
-        concern[deptKey].escalation = {
+        sec.status = "escalated";
+        sec.escalation = {
           note,
           level,
           escalatedBy: adminId,
@@ -3235,8 +3277,8 @@ async function updateAdminAction(id, actionType, data, adminId) {
         break;
 
       case "progress":
-        concern[deptKey].status = "in_progress";
-        concern[deptKey].progress = {
+        sec.status = "in_progress";
+        sec.progress = {
           note,
           updatedBy: adminId,
           updatedAt: new Date(),
@@ -3245,120 +3287,108 @@ async function updateAdminAction(id, actionType, data, adminId) {
     }
   };
 
-  // 🔹 Apply to all or one department
+  const modules = complaint.modules;
+
+  // PARTIAL ADMIN ACTION
   if (isPartial) {
-    updateDepartment(department);
-    concern.status = "partial";
-  } else {
-    const deptKeys = [
-      "doctorServices",
-      "billingServices",
-      "housekeeping",
-      "maintenance",
-      "diagnosticServices",
-      "dietitianServices",
-      "security",
-      "nursing",
-    ];
-
-    deptKeys.forEach((key) => {
-      const dept = concern[key];
-      if (!dept) return;
-      const hasText = dept.text?.trim()?.length > 0;
-      const hasFiles = Array.isArray(dept.attachments) && dept.attachments.length > 0;
-      if (hasText || hasFiles) updateDepartment(key);
-    });
-
-    concern.status = actionType === "resolved" ? "resolved" : actionType;
+    updateDept(department);
+    complaint.status = "partial";
   }
 
-  concern.updatedAt = new Date();
-  await concern.save();
+  // FULL ADMIN ACTION
+  else {
+    modules.forEach((dept) => {
+      const section = complaint[dept];
+      const hasText = section?.text?.trim()?.length > 0;
+      const hasFiles = Array.isArray(section?.attachments) && section.attachments.length > 0;
+      if (hasText || hasFiles) updateDept(dept);
+    });
 
-  // ✅ Return clean result
+    if (actionType === "resolved") {
+      complaint.status = "resolved_by_admin";
+    } else {
+      complaint.status = actionType;
+    }
+  }
+
+  complaint.updatedAt = new Date();
+  await complaint.save();
+
+  // Normalize status
+  if (complaint.status === "resolved_by_admin") {
+    complaint.status = "resolved";
+  }
+
   return {
     success: true,
     message: `Admin ${actionType} action completed successfully`,
-    concern,
+    complaint,
   };
 }
 
 const partialAdminResolveConcern = async (
-  concernId,
-  { department, note, proof, userId }
+  complaintId,
+  { department, note = "", proof = [], userId, actionTypeForDept = null }
 ) => {
-  const concern = await girirajModels.GIRIRAJIPDConcern.findById(concernId);
-  if (!concern) throw new Error("Concern not found");
-  if (!department) throw new Error("Department is required for partial resolve");
+  const ComplaintModel = getModel("GIRIRAJIPDConcern");
 
-  // ensure department exists
-  concern[department] = concern[department] || {};
+  const complaint = await ComplaintModel.findById(complaintId);
+  if (!complaint) throw new Error("Complaint not found");
 
-  // ✅ Mark this department as resolved by admin
-  concern[department].status = "resolved_by_admin";
-  concern[department].resolvedByAdmin = true;
-  concern[department].resolution = {
-    note: note || "",
-    proof: proof || [],
-    resolvedBy: userId || null,
+  if (!department) throw new Error("Department is required");
+
+  if (!complaint[department]) {
+    throw new Error(`Department '${department}' does not exist in this complaint`);
+  }
+
+  const section = complaint[department];
+
+  section.status = "resolved_by_admin";
+  section.resolvedByAdmin = true;
+  section.updatedByAdmin = true;
+
+  section.resolution = {
+    actionType: actionTypeForDept,
+    actionNote: note,
+    proof,
+    resolvedBy: userId,
     resolvedAt: new Date(),
-    resolvedType: "admin", // internal audit trace
+    resolvedType: "admin",
   };
 
-  // 🔹 Department keys to check resolution status
-  const deptKeys = [
-    "doctorServices",
-    "billingServices",
-    "housekeeping",
-    "maintenance",
-    "diagnosticServices",
-    "dietitianServices",
-    "security",
-    "nursing",
-  ];
+  // Check if all modules are resolved_by_admin
+  const allModules = complaint.modules;
 
-  // 🔹 Find all active departments (that have any data)
-  const activeDepts = deptKeys.filter(
-    (key) => concern[key] && (concern[key].text || concern[key].attachments?.length)
-  );
-
-  // 🔹 Count how many are fully resolved by admin
-  const resolvedCount = activeDepts.filter(
-    (key) => concern[key]?.status === "resolved_by_admin"
+  const resolvedCount = allModules.filter(
+    (mod) => complaint[mod]?.status === "resolved_by_admin"
   ).length;
 
-  // ✅ If all active departments resolved by admin → mark complaint fully resolved
-  concern.status =
-    resolvedCount === activeDepts.length && activeDepts.length > 0
-      ? "resolved_by_admin"
-      : "partial";
+  complaint.status =
+    resolvedCount === allModules.length ? "resolved_by_admin" : "partial";
 
-  // 🔹 Add history entry for audit
-  concern.history = concern.history || [];
-  concern.history.push({
-    action: "resolved",
-    by: userId,
+  complaint.history = complaint.history || [];
+  complaint.history.push({
+    action: "resolved_by_admin",
     department,
     note,
     proof,
+    actionType: actionTypeForDept,
+    by: userId,
     at: new Date(),
-    isPartial: true,
-    resolvedByAdmin: true,
+    isPartial: complaint.status !== "resolved_by_admin",
   });
 
-  concern.updatedAt = new Date();
-  await concern.save();
+  await complaint.save();
 
-  // ✅ Return clean result
   return {
     success: true,
     message:
-      concern.status === "resolved_by_admin"
-        ? "✅ All departments resolved by admin. Complaint closed."
-        : `✅ Department ${department} resolved by admin. Complaint remains partially open.`,
+      complaint.status === "resolved_by_admin"
+        ? "All departments resolved by admin. Complaint fully closed."
+        : `Department ${department} resolved by admin. Complaint remains partially open.`,
     data: {
-      _id: concern._id,
-      status: concern.status,
+      _id: complaint._id,
+      status: complaint.status,
       department,
       note,
     },
@@ -3781,18 +3811,24 @@ const updateNotificationSettingsService = async (userId, userModel, payload) => 
 
   return updated;
 };
+/* ===========================================================
+   ⭐ EMPLOYEE FEEDBACK USING getModel()
+   =========================================================== */
 
 const getEmployeeFeedback = async (page = 1, limit = 50) => {
+  const Model = getModel("GIRIRAJEmployeeFeedback");
+
   const [feedbacks, total] = await Promise.all([
-    girirajModels.GIRIRAJEmployeeFeedback.find()
+    Model.find()
       .select(
-        "employeeName employeeId mobileNumber floor ratings comments overallRecommendation createdAt"
+        "employeeName employeeId mobileNumber floor ratings trainingNeeded challengesSupportNeeded suggestions overallRecommendation createdAt"
       )
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),
-    girirajModels.GIRIRAJEmployeeFeedback.countDocuments(),
+
+    Model.countDocuments(),
   ]);
 
   return {
@@ -3803,46 +3839,49 @@ const getEmployeeFeedback = async (page = 1, limit = 50) => {
   };
 };
 
-// 🔹 Get single feedback by ID
+// 🔹 Get Single
 const getEmployeeFeedbackById = async (id) => {
-  const feedback = await girirajModels.GIRIRAJEmployeeFeedback.findById(id)
-    .select(
-      "employeeName employeeId mobileNumber floor ratings comments overallRecommendation createdAt updatedAt"
-    )
-    .lean();
+  const Model = getModel("GIRIRAJEmployeeFeedback");
 
-  return feedback || null;
-};
-
-
-// 🔹 Delete feedback
-const deleteEmployeeFeedback = async (id) => {
-  return await girirajModels.GIRIRAJEmployeeFeedback.findByIdAndDelete(id);
-};
-
-// 🔹 Update feedback
-const updateEmployeeFeedback = async (id, update) => {
-  const feedback = await girirajModels.GIRIRAJEmployeeFeedback.findByIdAndUpdate(
-    id,
-    update,
-    { new: true }
+  return (
+    (await Model.findById(id)
+      .select(
+        "employeeName employeeId mobileNumber floor ratings trainingNeeded challengesSupportNeeded suggestions overallRecommendation createdAt updatedAt"
+      )
+      .lean()) || null
   );
+};
+
+// 🔹 Delete
+const deleteEmployeeFeedback = async (id) => {
+  const Model = getModel("GIRIRAJEmployeeFeedback");
+  return await Model.findByIdAndDelete(id);
+};
+
+// 🔹 Update
+const updateEmployeeFeedback = async (id, update) => {
+  const Model = getModel("GIRIRAJEmployeeFeedback");
+
+  const feedback = await Model.findByIdAndUpdate(id, update, {
+    new: true,
+  });
+
   if (!feedback) throw new ApiError(404, "Feedback not found");
   return feedback;
 };
 
-// 🔹 Group by Rating
+// 🔹 Group By Rating
 const getEmployeeFeedbackByRating = async () => {
-  const feedbacks = await girirajModels.GIRIRAJEmployeeFeedback.find().lean();
+  const Model = getModel("GIRIRAJEmployeeFeedback");
+
+  const feedbacks = await Model.find().lean();
   const grouped = {};
 
   for (const fb of feedbacks) {
+    const ratings = fb.ratings ? Object.values(fb.ratings) : [];
     const avg =
-      fb.ratings && Object.values(fb.ratings).length
-        ? Math.round(
-            Object.values(fb.ratings).reduce((a, b) => a + b, 0) /
-              Object.values(fb.ratings).length
-          )
+      ratings.length > 0
+        ? Math.round(ratings.reduce((a, b) => a + b, 0) / ratings.length)
         : 0;
 
     const label =
@@ -3857,14 +3896,17 @@ const getEmployeeFeedbackByRating = async () => {
         : "Very Poor";
 
     if (!grouped[label]) grouped[label] = [];
+
     grouped[label].push({
       employeeName: fb.employeeName,
       employeeId: fb.employeeId,
       mobileNumber: fb.mobileNumber,
       floor: fb.floor,
       averageRating: avg,
-      overallRecommendation: fb.overallRecommendation,
       suggestions: fb.suggestions,
+      trainingNeeded: fb.trainingNeeded,
+      challengesSupportNeeded: fb.challengesSupportNeeded,
+      overallRecommendation: fb.overallRecommendation,
       date: fb.createdAt,
     });
   }
@@ -3872,8 +3914,10 @@ const getEmployeeFeedbackByRating = async () => {
   return grouped;
 };
 
+// 🔹 Most Frequent Rating Fields
 const getFrequentEmployeeRatings = async () => {
-  // ⭐ All rating keys based on EmployeeFeedbackSchema
+  const Model = getModel("GIRIRAJEmployeeFeedback");
+
   const ratingKeys = [
     "jobSatisfaction",
     "feelingValued",
@@ -3885,29 +3929,24 @@ const getFrequentEmployeeRatings = async () => {
     "suggestions",
   ];
 
-  // Initialize counts for each field
   const counts = {};
   ratingKeys.forEach((k) => (counts[k] = 0));
 
-  // 🧠 Fetch all Employee Feedback documents
-  const feedbacks = await girirajModels?.GIRIRAJEmployeeFeedback.find({}, { ratings: 1 }).lean();
+  const feedbacks = await Model.find({}, { ratings: 1 }).lean();
 
-  // Count frequency of ratings used
   feedbacks.forEach((fb) => {
     if (!fb.ratings) return;
+
     for (const key of ratingKeys) {
-      const val = fb.ratings[key];
-      if (typeof val === "number" && val >= 1 && val <= 5) {
+      if (typeof fb.ratings[key] === "number") {
         counts[key] += 1;
       }
     }
   });
 
-  // Sort descending by usage
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
 
-  // Convert key -> human-readable label
-  const prettyKey = (k) =>
+  const pretty = (k) =>
     k
       .replace(/([A-Z])/g, " $1")
       .replace(/_/g, " ")
@@ -3915,17 +3954,18 @@ const getFrequentEmployeeRatings = async () => {
       .trim()
       .replace(/^./, (c) => c.toUpperCase());
 
-  // Final keyword list
-  const keywords = sorted
-    .filter(([, count]) => count > 0)
-    .map(([key]) => prettyKey(key));
-
-  return keywords;
+  return sorted.filter((i) => i[1] > 0).map(([k]) => pretty(k));
 };
 
+/* ===========================================================
+   ⭐ CONSULTANT FEEDBACK USING getModel()
+   =========================================================== */
+
 const getConsultantFeedback = async (page = 1, limit = 50) => {
+  const Model = getModel("GIRIRAJConsultantFeedback");
+
   const [feedbacks, total] = await Promise.all([
-    girirajModels.GIRIRAJConsultantFeedback.find()
+    Model.find()
       .select(
         "doctorName language serviceRatings bdRatings managementFeedback finalComments createdAt"
       )
@@ -3934,7 +3974,7 @@ const getConsultantFeedback = async (page = 1, limit = 50) => {
       .limit(limit)
       .lean(),
 
-    girirajModels.GIRIRAJConsultantFeedback.countDocuments(),
+    Model.countDocuments(),
   ]);
 
   return {
@@ -3946,33 +3986,38 @@ const getConsultantFeedback = async (page = 1, limit = 50) => {
 };
 
 const getConsultantFeedbackById = async (id) => {
-  const feedback = await girirajModels.GIRIRAJConsultantFeedback.findById(id)
-    .select(
-      "doctorName language serviceRatings bdRatings managementFeedback finalComments ipAddress deviceInfo createdAt updatedAt"
-    )
-    .lean();
+  const Model = getModel("GIRIRAJConsultantFeedback");
 
-  return feedback || null;
+  return (
+    (await Model.findById(id)
+      .select(
+        "doctorName language serviceRatings bdRatings managementFeedback finalComments ipAddress deviceInfo createdAt updatedAt"
+      )
+      .lean()) || null
+  );
 };
 
 const deleteConsultantFeedback = async (id) => {
-  return await girirajModels.GIRIRAJConsultantFeedback.findByIdAndDelete(id);
+  const Model = getModel("GIRIRAJConsultantFeedback");
+  return await Model.findByIdAndDelete(id);
 };
 
 const updateConsultantFeedback = async (id, update) => {
-  const feedback = await girirajModels.GIRIRAJConsultantFeedback.findByIdAndUpdate(
-    id,
-    update,
-    { new: true }
-  );
+  const Model = getModel("GIRIRAJConsultantFeedback");
+
+  const feedback = await Model.findByIdAndUpdate(id, update, {
+    new: true,
+  });
 
   if (!feedback) throw new ApiError(404, "Consultant Feedback not found");
-
   return feedback;
 };
 
+// 🔹 Group By Rating
 const getConsultantFeedbackByRating = async () => {
-  const feedbacks = await girirajModels.GIRIRAJConsultantFeedback.find().lean();
+  const Model = getModel("GIRIRAJConsultantFeedback");
+
+  const feedbacks = await Model.find().lean();
   const grouped = {};
 
   for (const fb of feedbacks) {
@@ -4013,46 +4058,42 @@ const getConsultantFeedbackByRating = async () => {
   return grouped;
 };
 
+// 🔹 Most Frequent Consultant Rating Items
 const getFrequentConsultantRatings = async () => {
-  const RATING_SECTIONS = ["serviceRatings", "bdRatings", "managementFeedback"];
+  const Model = getModel("GIRIRAJConsultantFeedback");
 
+  const sections = ["serviceRatings", "bdRatings", "managementFeedback"];
   const counts = {};
 
-  // Fetch consultant feedbacks (only rating sections)
-  const feedbacks = await girirajModels.GIRIRAJConsultantFeedback.find(
+  const feedbacks = await Model.find(
     {},
     { serviceRatings: 1, bdRatings: 1, managementFeedback: 1 }
   ).lean();
 
   for (const fb of feedbacks) {
-    for (const section of RATING_SECTIONS) {
+    for (const section of sections) {
       const items = fb[section];
       if (!Array.isArray(items)) continue;
 
       for (const item of items) {
         if (!item.label) continue;
 
-        // init counter
         if (!counts[item.label]) counts[item.label] = 0;
 
-        // count only if valid rating
-        if (typeof item.rating === "number" && item.rating >= 1 && item.rating <= 5) {
+        if (typeof item.rating === "number") {
           counts[item.label] += 1;
         }
       }
     }
   }
 
-  // Sort labels by highest filled rating
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
 
-  // Final keywords (labels only)
-  const keywords = sorted
-    .filter(([, count]) => count > 0)
-    .map(([label]) => label);
-
-  return { keywords };
+  return {
+    keywords: sorted.filter((i) => i[1] > 0).map(([label]) => label),
+  };
 };
+
 
 
 export default {
@@ -4067,4 +4108,6 @@ export default {
   getInternalComplaintHistory, updateInternalProgress, partialInProgressInternal, partialEscalateInternal, partialResolveInternal, getPartialResolveInternalDetails, updateAdminAction,
   partialAdminEscalateConcern, partialAdminInProgressConcern, partialAdminResolveConcern, getAdminPartialResolveDetails, createTaskList, getAllTaskList, getTasksByList, getTaskListByUserId,
   getAllTaskListsWithTasks, searchComplaints, createBugReportService, getAllBugReportsService, updateBugStatusService, getNotificationSettingsService, updateNotificationSettingsService,
+  getEmployeeFeedback, getEmployeeFeedbackById, getEmployeeFeedbackByRating, getFrequentEmployeeRatings, updateEmployeeFeedback, deleteEmployeeFeedback, getConsultantFeedback, getConsultantFeedbackById,
+  getConsultantFeedbackByRating, getFrequentConsultantRatings, updateConsultantFeedback, deleteConsultantFeedback,
 }

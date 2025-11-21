@@ -215,4 +215,32 @@ router.get("/notification-settings", adminController.getNotificationSettings);
 
 router.put("/notification-setting/update", adminController.updateNotificationSettings);
 
+router
+  .route('/employee-feedback')
+  .get(adminController.getEmployeeFeedback);
+
+router
+  .route('/employee-feedback/:id')
+  .get(adminController.getEmployeeFeedbackById)
+  .put(adminController.updateEmployeeFeedback)
+  .delete(adminController.deleteEmployeeFeedback);
+
+router.get('/employee-by-rating', adminController.getEmployeeFeedbackByRating);
+
+router.get("/frequent-employee-keywords", adminController.frequentEmployeeFeedbackRatings);
+
+router
+  .route('/consultant-feedback')
+  .get(adminController.getConsultantFeedback);
+
+router
+  .route('/consultant-feedback/:id')
+  .get(adminController.getConsultantFeedbackById)
+  .put(adminController.updateConsultantFeedback)
+  .delete(adminController.deleteConsultantFeedback);
+
+router.get('/consultant-by-rating', adminController.getConsultantFeedbackByRating);
+
+router.get("/frequent-consultant-keywords", adminController.frequentConsultantFeedbackRatings);
+
 export default router;

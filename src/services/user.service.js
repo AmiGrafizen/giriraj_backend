@@ -1,36 +1,31 @@
 // ======================================================================
-// CLEAN VERSION USING getModel() EVERYWHERE
+// CLEAN VERSION USING getModel()
 // ======================================================================
 
-import { publishToCentrifugo } from '../centrifugo/centrifugoClient.js';
-import { girirajModels } from '../db/index.js';
-import { sendNotification } from '../utils/sendNotification.js';
-import { sendWhatsAppMessage } from '../utils/sendWhatsAppMessage.js';
+import { publishToCentrifugo } from "../centrifugo/centrifugoClient.js";
+import { girirajModels } from "../db/index.js";
+import { sendNotification } from "../utils/sendNotification.js";
+import { sendWhatsAppMessage } from "../utils/sendWhatsAppMessage.js";
 
 // ------------------------------------------------------------------
 // REUSABLE getModel()
 // ------------------------------------------------------------------
 function getModel(modelName) {
   if (!girirajModels || typeof girirajModels !== "object") {
-    console.error("❌ girirajModels not initialized or invalid");
-    return null;
+    throw new Error("girirajModels not initialized");
   }
 
   const keys = Object.keys(girirajModels);
-  if (!keys.length) {
-    console.error("⚠️ No models loaded in girirajModels");
-    return null;
-  }
 
   const target = modelName.toLowerCase();
 
   const foundKey = keys.find(
-    (k) => k.toLowerCase() === target || k.toLowerCase().includes(target)
+    (k) =>
+      k.toLowerCase() === target || k.toLowerCase().includes(target)
   );
 
   if (!foundKey) {
-    console.warn(`⚠️ Model "${modelName}" not found. Available:`, keys);
-    return null;
+    throw new Error(`Model not found: ${modelName}`);
   }
 
   let model = girirajModels[foundKey];
@@ -40,368 +35,365 @@ function getModel(modelName) {
   }
 
   if (!model || typeof model.find !== "function") {
-    console.error(`❌ Invalid Mongoose model: ${foundKey}`, model);
-    return null;
+    throw new Error(`Invalid Mongoose model: ${modelName}`);
   }
 
-  console.log(`✅ Using model: ${foundKey}`);
   return model;
 }
 
-const IPDPatient = () => getModel("ipdpatient");
-const OPDPatient = () => getModel("opdpatient");
-const IPDConcern = () => getModel("ipdconcern");
-const OPDConcern = () => getModel("opdconcern");
-const Notification = () => getModel("notification");
-const User = () => getModel("user");
-const NotificationSetting = () => getModel("notificationsetting");
-const InternalComplaint = () => getModel("internalcomplaint");
-const Doctor = () => getModel("doctor");
-const Complaint = () => getModel("complaint");
-const EmployeeFeedback = () => getModel("girirajemployeefeedback");
-const ConsultantFeedback = () => getModel("girirajconsultantfeedback");
+// 📌 MODEL SHORTCUTS
+const IPDPatient = () => getModel("GIRIRAJIPDPatients");
+const InternalComplaint = () => getModel("GIRIRAJInternalComplaint");
+const IPDConcern = () => getModel("GIRIRAJIPDConcern");
+const OPDPatient = () => getModel("GIRIRAJOpd");
+const OPDConcern = () => getModel("GIRIRAJOPDConcern");
+const User = () => getModel("GIRIRAJUser");
+const Doctor = () => getModel("GIRIRAJDoctor");
+const EmployeeFeedback = () => getModel("GIRIRAJEmployeeFeedback");
+const ConsultantFeedback = () => getModel("GIRIRAJConsultantFeedback");
+const NotificationSetting = () => getModel("GIRIRAJNotificationSetting");
+const Notification = () => getModel("GIRIRAJNotification");
+const Complaint = () => getModel("GIRIRajComplaints");
 
-
+// ======================================================================
+// CREATE COMPLAINT
+// ======================================================================
 const createComplaint = async (data) => {
-  return await Complaint()?.create(data);
+  return await Complaint().create(data);
 };
 
+// ======================================================================
+// CREATE IPD PATIENT (FULLY FIXED)
+// ======================================================================
 const createIPDPatient = async (payload, io) => {
-  try {
-    const { showInStackBar = true, userId, userModel } = payload;
+  const { showInStackBar = true, userId, userModel } = payload;
 
-    // 1️⃣ Create patient
-    const patient = await IPDPatient()?.create(payload);
-    if (!patient) throw new Error("Failed to create IPD patient");
+  const patient = await IPDPatient().create(payload);
 
-    // 2️⃣ Populate doctor
-    const populatedPatient = await IPDPatient()
-      ?.findById(patient._id)
-      .populate("consultantDoctorName", "name qualification")
-      .lean();
-
-    // 3️⃣ WhatsApp
-    if (populatedPatient.contact) {
-      try {
-        await sendWhatsAppMessage({
-          phoneNumber: populatedPatient.contact,
-          patientName: populatedPatient.patientName,
-        });
-      } catch (err) {
-        console.error("WhatsApp failed:", err.message);
-      }
-    }
-
-    // 4️⃣ Notification preference
-    let userSettings = null;
-    if (userId && userModel) {
-      userSettings = await NotificationSetting()?.findOne({ userId, userModel });
-    }
-
-    const allowSocket = showInStackBar && (userSettings?.ipd ?? true);
-
-    // 5️⃣ Socket Emit
-    if (io && allowSocket) {
-      io.emit("ipd:new", {
-        patientName: populatedPatient.patientName,
-        bedNo: populatedPatient.bedNo,
-        consultantDoctorName: populatedPatient?.consultantDoctorName?.name || "N/A",
-        createdAt: populatedPatient.createdAt,
-      });
-    }
-
-    // 6️⃣ Save notification
-    await Notification()?.create({
-      title: "IPD",
-      body: `Patient ${populatedPatient.patientName} (Bed ${populatedPatient.bedNo}) added a feedback.`,
-      data: {
-        patientName: populatedPatient.patientName,
-        bedNo: populatedPatient.bedNo,
-        consultantDoctorName: populatedPatient?.consultantDoctorName?.name || "N/A",
-      },
-      department: "IPD",
-      showInStackBar,
-      status: allowSocket ? "sent" : "saved",
-    });
-
-    return populatedPatient;
-  } catch (err) {
-    console.error("createIPDPatient error:", err);
-    throw err;
-  }
-};
-
-const createIPDConcern = async (payload, io) => {
-  const complaint = await IPDConcern()?.create(payload);
-  if (!complaint) return null;
-
-  const populatedComplaint = await IPDConcern()
-    ?.findById(complaint._id)
+  const populated = await IPDPatient()
+    .findById(patient._id)
     .populate("consultantDoctorName", "name qualification")
     .lean();
 
-  // WhatsApp
-  if (populatedComplaint.contact) {
-    try {
-      await sendWhatsAppMessage({
-        phoneNumber: populatedComplaint.contact,
-        patientName: populatedComplaint.patientName,
-      });
-    } catch {}
+  if (populated.contact) {
+    await sendWhatsAppMessage({
+      phoneNumber: populated.contact,
+      patientName: populated.patientName,
+    }).catch(console.error);
   }
 
-  // Socket
-  if (io) {
-    io.emit("ipd:complaint", {
-      patientName: populatedComplaint.patientName,
-      bedNo: populatedComplaint.bedNo,
+  let settings = null;
+  if (userId && userModel) {
+    settings = await NotificationSetting().findOne({ userId, userModel });
+  }
+
+  const allowSocket = showInStackBar && (settings?.ipd ?? true);
+
+  if (io && allowSocket) {
+    io.emit("ipd:new", {
+      patientName: populated.patientName,
+      bedNo: populated.bedNo,
       consultantDoctorName:
-        populatedComplaint?.consultantDoctorName?.name || "N/A",
-      contact: populatedComplaint.contact || null,
-      createdAt: populatedComplaint.createdAt,
+        populated?.consultantDoctorName?.name || "N/A",
+      createdAt: populated.createdAt,
     });
   }
 
-  // Notification Save
-  await Notification()?.create({
-    title: "Complaint Registered",
-    body: `Patient ${populatedComplaint.patientName} raised a complaint.`,
+  await Notification().create({
+    title: "IPD",
+    body: `Patient ${populated.patientName} (Bed ${populated.bedNo}) add a feedback.`,
     data: {
-      complaintId: populatedComplaint._id?.toString(),
-      patientName: populatedComplaint.patientName,
-      bedNo: populatedComplaint.bedNo,
+      patientName: populated.patientName,
+      bedNo: populated.bedNo,
+      consultantDoctorName:
+        populated?.consultantDoctorName?.name || "N/A",
+    },
+    department: "IPD",
+    showInStackBar,
+    status: allowSocket ? "sent" : "saved",
+  });
+
+  return populated;
+};
+
+// ======================================================================
+// CREATE IPD CONCERN (FULL getModel version)
+// ======================================================================
+const createIPDConcern = async (payload, io) => {
+  console.log("📥 Incoming IPD Concern Payload:", payload);
+
+  // 1️⃣ Create concern
+  const concern = await IPDConcern().create(payload);
+  console.log("🆕 Concern created with ID:", concern._id);
+
+  // 2️⃣ Populate doctor
+  const populated = await IPDConcern()
+    .findById(concern._id)
+    .populate("consultantDoctorName", "name qualification")
+    .lean();
+
+  console.log("👤 Populated Concern:", populated);
+
+  // 3️⃣ WhatsApp message
+  if (populated.contact) {
+    console.log("📞 Sending WhatsApp to:", populated.contact);
+    await sendWhatsAppMessage({
+      phoneNumber: populated.contact,
+      patientName: populated.patientName,
+    }).catch((err) => console.error("❌ WhatsApp Error:", err));
+  }
+
+  // 4️⃣ Live socket broadcast
+  if (io) {
+    console.log("📡 Emitting socket event: ipd:complaint");
+    io.emit("ipd:complaint", {
+      patientName: populated.patientName,
+      bedNo: populated.bedNo,
+      consultantDoctorName: populated?.consultantDoctorName?.name || "N/A",
+      createdAt: populated.createdAt,
+    });
+  }
+
+  // 5️⃣ Determine involved departments
+  const DEPTS = [
+    "doctorServices",
+    "billingServices",
+    "housekeeping",
+    "maintenance",
+    "diagnosticServices",
+    "dietitianServices",
+    "security",
+    "nursing",
+  ];
+
+  const MODULE_MAP = {
+    doctorServices: "doctor_service",
+    billingServices: "billing_service",
+    housekeeping: "housekeeping_service",
+    maintenance: "maintenance_service",
+    diagnosticServices: "diagnostic_service",
+    dietitianServices: "dietitian_service",
+    security: "security_service",
+    nursing: "nursing_service",
+  };
+
+  const formatDeptLabel = (key) =>
+    key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/services?/gi, " Services")
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .trim();
+
+  const involved = DEPTS.filter((key) => {
+    const block = populated[key];
+    return (
+      block &&
+      ((block.text && block.text.trim()) ||
+        (Array.isArray(block.attachments) && block.attachments.length > 0))
+    );
+  });
+
+  console.log("🏥 Involved Departments:", involved);
+
+  // 6️⃣ Send FCM Notifications
+  for (const dept of involved) {
+    const label = formatDeptLabel(dept);
+    const topic = `hospital-${MODULE_MAP[dept]}`;
+
+    const messageData = {
+      complaintId: populated._id.toString(),
+      patientName: populated.patientName,
+      bedNo: String(populated.bedNo || ""),
+      consultantDoctorName:
+        populated?.consultantDoctorName?.name || "N/A",
+      department: label,
+      module: MODULE_MAP[dept],
+      sound: "default",
+    };
+
+    const message = {
+      title: "New Complaint Added",
+      body: `Patient ${populated.patientName} raised a complaint in ${label}.`,
+      topic,
+      data: messageData,
+    };
+
+    console.log("🔔 Sending FCM Notification →");
+    console.log(JSON.stringify(message, null, 2));
+
+    await sendNotification(message).catch((err) =>
+      console.error("❌ FCM Error:", err)
+    );
+  }
+
+  // 7️⃣ Save DB Notification
+  const dbNotification = await Notification().create({
+    title: "Complaint Registered",
+    body: `Patient ${populated.patientName} raised a complaint.`,
+    data: {
+      complaintId: populated._id.toString(),
+      patientName: populated.patientName,
+      bedNo: populated.bedNo,
     },
     department: "IPD",
     status: "sent",
   });
 
-  return populatedComplaint;
+  console.log("📝 Notification saved to DB:", dbNotification);
+
+  return populated;
 };
 
-const createInternalComplaint = async (payload, io) => {
-  const complaint = await InternalComplaint()?.create(payload);
-  if (!complaint) return null;
 
-  const populatedComplaint = await InternalComplaint()
-    ?.findById(complaint._id)
+// ======================================================================
+// CREATE INTERNAL COMPLAINT
+// ======================================================================
+const createInternalComplaint = async (payload, io) => {
+  const internal = await InternalComplaint().create(payload);
+
+  const populated = await InternalComplaint()
+    .findById(internal._id)
     .lean();
 
   if (io) {
     io.emit("internal:complaint", {
-      employeeName: populatedComplaint.employeeName,
-      employeeId: populatedComplaint.employeeId,
-      contactNo: populatedComplaint.contactNo,
-      floorNo: populatedComplaint.floorNo,
-      createdAt: populatedComplaint.createdAt,
+      employeeName: populated.employeeName,
+      employeeId: populated.employeeId,
+      floorNo: populated.floorNo,
+      createdAt: populated.createdAt,
     });
   }
 
-  return populatedComplaint;
+  return populated;
 };
 
+// ======================================================================
+// CREATE OPD PATIENT
+// ======================================================================
 const createOPDPatient = async (payload, io) => {
-  try {
-    const { showInStackBar = true, userId, userModel } = payload;
+  const { showInStackBar = true, userId, userModel } = payload;
 
-    const patient = await OPDPatient()?.create(payload);
-    if (!patient) throw new Error("Failed to create OPD patient");
+  const opd = await OPDPatient().create(payload);
 
-    const populatedPatient = await OPDPatient()
-      ?.findById(patient._id)
-      .populate("consultantDoctorName", "name qualification")
-      .lean();
+  const populated = await OPDPatient()
+    .findById(opd._id)
+    .populate("consultantDoctorName", "name qualification")
+    .lean();
 
-    if (populatedPatient.contact) {
-      try {
-        await sendWhatsAppMessage({
-          phoneNumber: populatedPatient.contact,
-          patientName: populatedPatient.patientName,
-        });
-      } catch {}
-    }
-
-    let userSettings = null;
-    if (userId && userModel) {
-      userSettings = await NotificationSetting()?.findOne({ userId, userModel });
-    }
-
-    const allowSocket = showInStackBar && (userSettings?.opd ?? true);
-
-    if (io && allowSocket) {
-      io.emit("opd:new", {
-        patientName: populatedPatient.patientName,
-        consultantDoctorName:
-          populatedPatient?.consultantDoctorName?.name || "N/A",
-        contact: populatedPatient.contact,
-        createdAt: populatedPatient.createdAt,
-      });
-    }
-
-    await Notification()?.create({
-      title: "OPD",
-      body: `Patient ${populatedPatient.patientName} has added a feedback.`,
-      data: {
-        patientName: populatedPatient.patientName,
-        contact: populatedPatient.contact,
-        consultantDoctorName:
-          populatedPatient?.consultantDoctorName?.name || "N/A",
-      },
-      department: "OPD",
-      showInStackBar,
-      status: allowSocket ? "sent" : "saved",
-    });
-
-    return populatedPatient;
-  } catch (err) {
-    throw err;
+  if (populated.contact) {
+    await sendWhatsAppMessage({
+      phoneNumber: populated.contact,
+      patientName: populated.patientName,
+    }).catch(console.error);
   }
+
+  let settings = null;
+  if (userId && userModel) {
+    settings = await NotificationSetting().findOne({ userId, userModel });
+  }
+
+  const allow = showInStackBar && (settings?.opd ?? true);
+
+  if (io && allow) {
+    io.emit("opd:new", {
+      patientName: populated.patientName,
+      consultantDoctorName:
+        populated?.consultantDoctorName?.name || "N/A",
+      createdAt: populated.createdAt,
+    });
+  }
+
+  await Notification().create({
+    title: "OPD",
+    body: `Patient ${populated.patientName} has added a feedback.`,
+    data: {
+      patientName: populated.patientName,
+      consultantDoctorName:
+        populated?.consultantDoctorName?.name || "N/A",
+    },
+    department: "OPD",
+    status: allow ? "sent" : "saved",
+  });
+
+  return populated;
 };
 
+// ======================================================================
+// OPD CONCERN
+// ======================================================================
 const createOPDConcern = async (payload) => {
-  return await OPDConcern()?.create(payload);
+  return await OPDConcern().create(payload);
 };
 
-
+// ======================================================================
+// USER
+// ======================================================================
 const getUserByEmail = async (email) => {
-  return await User()?.findOne({ email });
+  return await User().findOne({ email });
 };
 
-
+// ======================================================================
+// DOCTORS
+// ======================================================================
 const getDoctors = async () => {
-  return await Doctor()?.find().sort({ createdAt: -1 });
+  return await Doctor().find().sort({ createdAt: -1 });
 };
 
+// ======================================================================
+// EMPLOYEE FEEDBACK
+// ======================================================================
 const createEmployeeFeedback = async (payload, io) => {
-  try {
-    // 1️⃣ Create employee feedback record
-    const feedback = await EmployeeFeedback()?.create({
-      employeeName: payload.employeeName,
-      employeeId: payload.employeeId,
-      ratings: {
-        jobSatisfaction: payload.ratings?.jobSatisfaction,
-        feelingValued: payload.ratings?.feelingValued,
-        growthOpportunities: payload.ratings?.growthOpportunities,
-        trainingSupport: payload.ratings?.trainingSupport,
-        welfareFacility: payload.ratings?.welfareFacility,
-        trainingNeeded: payload.ratings?.trainingNeeded,
-        challengesSupportNeeded: payload.ratings?.challengesSupportNeeded,
-        suggestions: payload.ratings?.suggestions,
-      },
-      comments: {
-        trainingNeeded: payload.comments?.trainingNeeded,
-        challengesSupportNeeded: payload.comments?.challengesSupportNeeded,
-        suggestions: payload.comments?.suggestions,
-      },
-      overallRecommendation: payload.overallRecommendation,
+  const feedback = await EmployeeFeedback().create(payload);
+
+  const populated = await EmployeeFeedback()
+    .findById(feedback._id)
+    .lean();
+
+  if (io) {
+    io.emit("employeeFeedback:new", {
+      employeeName: populated.employeeName,
+      employeeId: populated.employeeId,
+      createdAt: populated.createdAt,
     });
-
-    if (!feedback) throw new Error("Failed to create employee feedback");
-
-    // 2️⃣ Populate after creation
-    const populatedFeedback = await EmployeeFeedback()?.findById(feedback._id).lean();
-
-    // 3️⃣ Emit real-time socket event (if enabled)
-    if (io) {
-      io.emit("employeeFeedback:new", {
-        employeeName: populatedFeedback.employeeName,
-        employeeId: populatedFeedback.employeeId,
-        overallRecommendation: populatedFeedback.overallRecommendation,
-        createdAt: populatedFeedback.createdAt,
-      });
-      console.log("📡 Employee feedback socket emitted");
-    }
-
-    // 4️⃣ Save a system notification
-    await girirajModels.GIRIRAJNotification.create({
-      title: "Employee Feedback Received",
-      body: `New feedback from ${populatedFeedback.employeeName} (${populatedFeedback.employeeId}).`,
-      data: {
-        employeeName: populatedFeedback.employeeName,
-        employeeId: populatedFeedback.employeeId,
-        overallRecommendation: populatedFeedback.overallRecommendation,
-      },
-      department: "HR",
-      showInStackBar: true,
-      status: "sent",
-    });
-
-    return populatedFeedback;
-  } catch (err) {
-    console.error("❌ createEmployeeFeedback error:", err);
-    throw err;
   }
+
+  await Notification().create({
+    title: "Employee Feedback Received",
+    body: `New feedback from ${populated.employeeName}.`,
+    department: "HR",
+    status: "sent",
+  });
+
+  return populated;
 };
 
+// ======================================================================
+// CONSULTANT FEEDBACK
+// ======================================================================
 const createConsultantFeedback = async (payload, io) => {
-  try {
-    // 1️⃣ Create consultant feedback record
-    const feedback = await ConsultantFeedback()?.create({
-      language: payload.language,
-      doctorName: payload.doctorName,
+  const feedback = await ConsultantFeedback().create(payload);
 
-      serviceRatings: payload.serviceRatings?.map(item => ({
-        label: item.label,
-        rating: item.rating,
-        comment: item.comment,
-      })),
+  const populated = await ConsultantFeedback()
+    .findById(feedback._id)
+    .lean();
 
-      bdRatings: payload.bdRatings?.map(item => ({
-        label: item.label,
-        rating: item.rating,
-        comment: item.comment,
-      })),
-
-      managementFeedback: payload.managementFeedback?.map(item => ({
-        label: item.label,
-        rating: item.rating,
-        comment: item.comment,
-      })),
-
-      finalComments: payload.finalComments,
-
-      ipAddress: payload.ipAddress || null,
-      deviceInfo: payload.deviceInfo || null,
+  if (io) {
+    io.emit("consultantFeedback:new", {
+      doctorName: populated.doctorName,
+      createdAt: populated.createdAt,
     });
-
-    if (!feedback) throw new Error("Failed to create consultant feedback");
-
-    // 2️⃣ Populate after creation
-    const populatedFeedback = await ConsultantFeedback()
-      .findById(feedback._id)
-      .lean();
-
-    // 3️⃣ Emit real-time socket event (if enabled)
-    if (io) {
-      io.emit("consultantFeedback:new", {
-        doctorName: populatedFeedback.doctorName,
-        language: populatedFeedback.language,
-        createdAt: populatedFeedback.createdAt,
-      });
-
-      console.log("Consultant feedback socket emitted");
-    }
-
-    // 4️⃣ Save system notification
-    await girirajModels.GIRIRAJNotification.create({
-      title: "Consultant Feedback Received",
-      body: `New feedback submitted by Dr. ${populatedFeedback.doctorName}.`,
-      data: {
-        doctorName: populatedFeedback.doctorName,
-        language: populatedFeedback.language,
-      },
-      department: "Management",
-      showInStackBar: true,
-      status: "sent",
-    });
-
-    return populatedFeedback;
-
-  } catch (err) {
-    console.error("createConsultantFeedback error:", err);
-    throw err;
   }
+
+  await Notification().create({
+    title: "Consultant Feedback Received",
+    body: `New feedback submitted by Dr. ${populated.doctorName}.`,
+    department: "Management",
+    status: "sent",
+  });
+
+  return populated;
 };
 
-export default {createComplaint, createIPDPatient, createOPDPatient, createIPDConcern, createOPDConcern, getUserByEmail, getDoctors, createInternalComplaint, createEmployeeFeedback,
-  createConsultantFeedback,
+export default {
+  createComplaint, createIPDPatient, createOPDPatient, createIPDConcern, createOPDConcern, getUserByEmail, getDoctors, createInternalComplaint, createEmployeeFeedback, createConsultantFeedback,
 };

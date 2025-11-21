@@ -2,7 +2,6 @@ import mongoose from "mongoose";
 
 /* ============================================================
    ⭐ CONCERN ITEM SCHEMA (FOR EACH DEPARTMENT)
-   Matches Your UI: RCA / CA / PA, Action Note, Proof Upload, Status
 ============================================================ */
 const ConcernItemSchema = new mongoose.Schema(
   {
@@ -12,7 +11,6 @@ const ConcernItemSchema = new mongoose.Schema(
     text: { type: String },
     attachments: [{ type: String }],
 
-    // ⭐ Department status
     status: {
       type: String,
       enum: [
@@ -24,26 +22,18 @@ const ConcernItemSchema = new mongoose.Schema(
         "resolved_by_admin",
       ],
       default: "open",
-      trim: true,
     },
 
-    // ⭐ Admin indicators
     resolvedByAdmin: { type: Boolean, default: false },
     updatedByAdmin: { type: Boolean, default: false },
     adminNote: { type: String },
 
-    /* ----------------------------------------------------------
-       ⭐ PROGRESS
-    ----------------------------------------------------------- */
     progress: {
       note: { type: String },
       updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
       updatedAt: { type: Date, default: Date.now },
     },
 
-    /* ----------------------------------------------------------
-       ⭐ FORWARD
-    ----------------------------------------------------------- */
     forward: {
       toDepartment: { type: String },
       note: { type: String },
@@ -51,9 +41,6 @@ const ConcernItemSchema = new mongoose.Schema(
       forwardedAt: { type: Date },
     },
 
-    /* ----------------------------------------------------------
-       ⭐ ESCALATION
-    ----------------------------------------------------------- */
     escalation: {
       level: {
         type: String,
@@ -65,10 +52,6 @@ const ConcernItemSchema = new mongoose.Schema(
       toUser: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
     },
 
-    /* ----------------------------------------------------------
-       ⭐ RESOLUTION — Updated as per your UI
-       RCA / CA / PA + Note + Proof + Resolved Type
-    ----------------------------------------------------------- */
     resolution: {
       actionType: {
         type: String,
@@ -79,18 +62,14 @@ const ConcernItemSchema = new mongoose.Schema(
       proof: [{ type: String }],
       resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
       resolvedAt: { type: Date },
-      resolvedType: {
-        type: String,
-        enum: ["admin", "staff"],
-        default: "staff",
-      },
+      resolvedType: { type: String, enum: ["admin", "staff"], default: "staff" },
     },
   },
   { _id: false }
 );
 
 /* ============================================================
-   ⭐ SUPPORTING SUB-SCHEMAS
+   ⭐ SUPPORTING SUBSCHEMAS
 ============================================================ */
 const EscalationSchema = new mongoose.Schema(
   {
@@ -106,19 +85,9 @@ const EscalationSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const ResolutionSchema = new mongoose.Schema(
-  {
-    note: { type: String, required: true },
-    proof: [{ type: String }],
-    resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-    resolvedAt: { type: Date, default: Date.now },
-  },
-  { _id: false }
-);
-
 const ForwardSchema = new mongoose.Schema(
   {
-    toDepartment: { type: String, required: true },
+    toDepartment: { type: String },
     note: { type: String },
     forwardedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
     forwardedAt: { type: Date, default: Date.now },
@@ -128,15 +97,25 @@ const ForwardSchema = new mongoose.Schema(
 
 const ProgressSchema = new mongoose.Schema(
   {
-    note: { type: String, required: true },
+    note: { type: String },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
     updatedAt: { type: Date, default: Date.now },
   },
   { _id: false }
 );
 
+const ResolutionSchema = new mongoose.Schema(
+  {
+    note: { type: String },
+    proof: [{ type: String }],
+    resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+    resolvedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 /* ============================================================
-   ⭐ COUNTER FOR COMPLAINT ID (A00001 → A00002 → ... )
+   ⭐ COUNTER SCHEMA (AUTO-ID)
 ============================================================ */
 const CounterSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
@@ -144,8 +123,10 @@ const CounterSchema = new mongoose.Schema({
   seriesChar: { type: String, default: "A" },
 });
 
-const Counter =
-  mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
+// Register Counter model only if not already created
+if (!mongoose.models.Counter) {
+  mongoose.model("Counter", CounterSchema);
+}
 
 /* ============================================================
    ⭐ MAIN IPD CONCERN SCHEMA
@@ -154,6 +135,7 @@ const IPDConcernSchema = new mongoose.Schema(
   {
     patientName: { type: String, required: true },
     complaintId: { type: String, unique: true },
+
     contact: { type: String },
     bedNo: { type: String },
     language: { type: String },
@@ -169,29 +151,23 @@ const IPDConcernSchema = new mongoose.Schema(
       default: "Normal",
     },
 
-    /* ----------------------------------------------------------
-       ⭐ ALL DEPARTMENTS
-    ----------------------------------------------------------- */
-    doctorServices: { type: ConcernItemSchema, default: undefined },
-    billingServices: { type: ConcernItemSchema, default: undefined },
-    housekeeping: { type: ConcernItemSchema, default: undefined },
-    maintenance: { type: ConcernItemSchema, default: undefined },
-    diagnosticServices: { type: ConcernItemSchema, default: undefined },
-    dietitianServices: { type: ConcernItemSchema, default: undefined },
-    security: { type: ConcernItemSchema, default: undefined },
-    nursing: { type: ConcernItemSchema, default: undefined },
+    // ⭐ Departments
+    doctorServices: { type: ConcernItemSchema },
+    billingServices: { type: ConcernItemSchema },
+    housekeeping: { type: ConcernItemSchema },
+    maintenance: { type: ConcernItemSchema },
+    diagnosticServices: { type: ConcernItemSchema },
+    dietitianServices: { type: ConcernItemSchema },
+    security: { type: ConcernItemSchema },
+    nursing: { type: ConcernItemSchema },
 
     comments: { type: String },
 
-    /* ----------------------------------------------------------
-       ⭐ OVERALL COMPLAINT STATUS
-    ----------------------------------------------------------- */
     status: {
       type: String,
       enum: ["open", "in_progress", "forwarded", "resolved", "escalated", "partial"],
       default: "open",
       lowercase: true,
-      trim: true,
     },
 
     note: { type: String },
@@ -205,52 +181,74 @@ const IPDConcernSchema = new mongoose.Schema(
 );
 
 /* ============================================================
-   ⭐ VIRTUAL LIST OF ACTIVE MODULES
+   ⭐ VIRTUAL: MODULE LIST
 ============================================================ */
 IPDConcernSchema.virtual("modules").get(function () {
-  const modules = [];
-  if (this.doctorServices) modules.push("doctorServices");
-  if (this.billingServices) modules.push("billingServices");
-  if (this.housekeeping) modules.push("housekeeping");
-  if (this.maintenance) modules.push("maintenance");
-  if (this.diagnosticServices) modules.push("diagnosticServices");
-  if (this.dietitianServices) modules.push("dietitianServices");
-  if (this.security) modules.push("security");
-  if (this.nursing) modules.push("nursing");
-  return modules;
+  return [
+    "doctorServices",
+    "billingServices",
+    "housekeeping",
+    "maintenance",
+    "diagnosticServices",
+    "dietitianServices",
+    "security",
+    "nursing",
+  ].filter((key) => !!this[key]);
 });
 
 IPDConcernSchema.set("toJSON", { virtuals: true });
 IPDConcernSchema.set("toObject", { virtuals: true });
 
 /* ============================================================
-   ⭐ AUTO-GENERATE complaintId
+   ⭐ AUTO-GENERATE complaintId WITHOUT COUNTER MODEL
+   ✔ Uses this.constructor → ALWAYS SAFE
+   ✔ No Counter model
+   ✔ No buffering timeout
 ============================================================ */
 IPDConcernSchema.pre("save", async function (next) {
   if (this.complaintId) return next();
 
-  const counter = await Counter.findOneAndUpdate(
-    { name: "complaintId" },
-    { $inc: { seq: 1 } },
-    { new: true, upsert: true }
-  );
+  try {
+    const Model = this.constructor; // ⭐ ALWAYS gives the current model
 
-  let { seq, seriesChar } = counter;
+    // 1️⃣ Fetch last record
+    const lastRecord = await Model
+      .findOne({ complaintId: { $exists: true } })
+      .sort({ createdAt: -1 })
+      .lean();
 
-  if (seq > 99999) {
-    seq = 1;
-    seriesChar = String.fromCharCode(seriesChar.charCodeAt(0) + 1);
-    await Counter.updateOne({ name: "complaintId" }, { seq, seriesChar });
+    let seriesChar = "A";
+    let seq = 0;
+
+    if (lastRecord?.complaintId) {
+      const last = lastRecord.complaintId;  // Example: A00025
+      seriesChar = last.charAt(0);          // A
+      seq = parseInt(last.slice(1));        // 25
+    }
+
+    // 2️⃣ Increment
+    seq += 1;
+
+    // 3️⃣ Move to next alphabet after 99999
+    if (seq > 99999) {
+      seq = 1;
+      seriesChar = String.fromCharCode(seriesChar.charCodeAt(0) + 1);
+    }
+
+    // 4️⃣ Generate final complaint ID
+    this.complaintId = `${seriesChar}${String(seq).padStart(5, "0")}`;
+
+    next();
+  } catch (err) {
+    console.error("❌ complaintId generation failed:", err);
+    next(err);
   }
-
-  this.complaintId = `${seriesChar}${seq.toString().padStart(5, "0")}`;
-  next();
 });
 
-/* ============================================================ */
-IPDConcernSchema.index({ complaintId: 1 }, { unique: true });
-IPDConcernSchema.index({ patientName: 1 });
-IPDConcernSchema.index({ status: 1 });
-IPDConcernSchema.index({ createdAt: -1 });
 
+
+/* ============================================================
+   ⭐ REGISTER MODEL SAFELY
+============================================================ */
 export default IPDConcernSchema;
+ ;

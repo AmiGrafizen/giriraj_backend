@@ -1540,6 +1540,117 @@ const updateNotificationSettings = async (req, res) => {
   }
 };
 
+const getEmployeeFeedback = catchAsync(async (req, res) => {
+  const patients = await adminService.getEmployeeFeedback(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
+});
+
+const getEmployeeFeedbackById = catchAsync(async (req, res) => {
+  console.log('req.params.id', req.params.id)
+  const patient = await adminService.getEmployeeFeedbackById(req.params.id);
+  console.log('patient', patient)
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
+});
+
+const updateEmployeeFeedback = catchAsync(async (req, res) => {
+  const updatedPatient = await adminService.updateEmployeeFeedback(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient updated successfully',
+    data: updatedPatient,
+  });
+});
+
+const deleteEmployeeFeedback = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteEmployeeFeedback(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.NO_CONTENT).send();
+});
+
+ const getEmployeeFeedbackByRating = catchAsync(async (req, res) => {
+  const patients = await adminService.getEmployeeFeedbackByRating(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
+});
+
+  const frequentEmployeeFeedbackRatings = async (req, res) => {
+    try {
+      const keywords = await adminService.getFrequentEmployeeRatings();
+      res.json({ keywords });
+    } catch (err) {
+      console.error("Error fetching frequent OPD ratings:", err);
+      res.status(500).json({ message: "Failed to fetch frequent ratings" });
+    }
+  };
+
+  const getConsultantFeedback = catchAsync(async (req, res) => {
+  const patients = await adminService.getConsultantFeedback(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
+});
+
+const getConsultantFeedbackById = catchAsync(async (req, res) => {
+  console.log('req.params.id', req.params.id)
+  const patient = await adminService.getConsultantFeedbackById(req.params.id);
+  console.log('patient', patient)
+  if (!patient) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient fetched successfully',
+    data: patient,
+  });
+});
+
+const updateConsultantFeedback = catchAsync(async (req, res) => {
+  const updatedPatient = await adminService.updateConsultantFeedback(req.params.id, req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patient updated successfully',
+    data: updatedPatient,
+  });
+});
+
+const deleteConsultantFeedback = catchAsync(async (req, res) => {
+  const deleted = await adminService.deleteConsultantFeedback(req.params.id);
+  if (!deleted) throw new ApiError(httpStatus.NOT_FOUND, 'Patient not found');
+  res.status(httpStatus.NO_CONTENT).send();
+});
+
+ const getConsultantFeedbackByRating = catchAsync(async (req, res) => {
+  const patients = await adminService.getConsultantFeedbackByRating(req.body);
+  res.status(httpStatus.OK).json({
+    status: true,
+    message: 'Patients fetched successfully',
+    data: patients,
+  });
+});
+
+  const frequentConsultantFeedbackRatings = async (req, res) => {
+    try {
+      const keywords = await adminService.getConsultantFeedbackByRating();
+      res.json({ keywords });
+    } catch (err) {
+      console.error("Error fetching frequent OPD ratings:", err);
+      res.status(500).json({ message: "Failed to fetch frequent ratings" });
+    }
+  };
+
+
 export default { createIPDPatient, getIPDPatients, getIPDPatientById, updateIPDPatientById, deleteIPDPatientById, createComplaint, getComplaintById, getAllComplaints, updateComplaint,
   createOPDPatient, getOPDPatients, getOPDPatientById, updateOPDPatientById, deleteOPDPatientById, getComplaintStatsByDepartment, getIPDPatientByRating, getOPDPatientByRating, updateProgressRemark,
   createRole, getAllRoles, getRoleById, updateRole, deleteRole, createRoleUser, getAllRoleUsers, getRoleUserById, updateRoleUser, deleteRoleUser, getDashboard, createIPDConcern,
@@ -1551,5 +1662,7 @@ export default { createIPDPatient, getIPDPatients, getIPDPatientById, updateIPDP
   deleteInternalComplaint, forwardInternalComplaint, updateInternalProgress, escalateInternalComplaint, resolveInternalComplaint, partialEscalateInternal, getInternalComplaintHistory,
   partialResolveInternal, getPartialResolveInternalDetails, partialInProgressInternal, adminResolveConcern, adminEscalateConcern, adminProgressConcern, adminForwardConcern, handleAdminPartialEscalate,
   handleAdminPartialInProgress, handleAdminPartialResolve, getAdminPartialResolveInfo, createTaskList, getAllTaskList, getTaskListByUserId, getTaskByList,getAllTaskListsWithTasks,
-  handleSearchComplaints, createBugReport, getAllBugReports, updateBugStatus, getNotificationSettings, updateNotificationSettings,
+  handleSearchComplaints, createBugReport, getAllBugReports, updateBugStatus, getNotificationSettings, updateNotificationSettings, getEmployeeFeedback, getEmployeeFeedbackById, getEmployeeFeedbackByRating,
+  updateEmployeeFeedback, deleteEmployeeFeedback, getConsultantFeedback, getConsultantFeedbackByRating, frequentEmployeeFeedbackRatings, frequentConsultantFeedbackRatings, updateConsultantFeedback,
+  deleteConsultantFeedback, getConsultantFeedbackById,
 }
