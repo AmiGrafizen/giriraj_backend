@@ -120,42 +120,54 @@ const createIPDPatient = async (payload, io) => {
 // CREATE IPD CONCERN (FULL getModel version)
 // ======================================================================
 const createIPDConcern = async (payload, io) => {
-  console.log("📥 Incoming IPD Concern Payload:", payload);
+  // 1️⃣ Create complaint
+  const complaint = await IPDConcern()?.create(payload);
+  if (!complaint) {
+    console.error("Failed to create Complaint");
+    return null;
+  }
 
-  // 1️⃣ Create concern
-  const concern = await IPDConcern().create(payload);
-  console.log("🆕 Concern created with ID:", concern._id);
-
-  // 2️⃣ Populate doctor
-  const populated = await IPDConcern()
-    .findById(concern._id)
+  // 2️⃣ Populate doctor info
+  const populatedComplaint = await IPDConcern()?.findById(
+    complaint._id
+  )
     .populate("consultantDoctorName", "name qualification")
     .lean();
 
-  console.log("👤 Populated Concern:", populated);
+  console.log("IPD complaint created:", populatedComplaint.patientName);
 
   // 3️⃣ WhatsApp message
-  if (populated.contact) {
-    console.log("📞 Sending WhatsApp to:", populated.contact);
-    await sendWhatsAppMessage({
-      phoneNumber: populated.contact,
-      patientName: populated.patientName,
-    }).catch((err) => console.error("❌ WhatsApp Error:", err));
+  if (populatedComplaint.contact) {
+    try {
+      await sendWhatsAppMessage({
+        phoneNumber: populatedComplaint.contact,
+        patientName: populatedComplaint.patientName,
+      });
+      console.log("✅ WhatsApp message sent to patient");
+    } catch (err) {
+      console.error("❌ WhatsApp failed:", err.response?.data || err.message);
+    }
   }
 
-  // 4️⃣ Live socket broadcast
-  if (io) {
-    console.log("📡 Emitting socket event: ipd:complaint");
-    io.emit("ipd:complaint", {
-      patientName: populated.patientName,
-      bedNo: populated.bedNo,
-      consultantDoctorName: populated?.consultantDoctorName?.name || "N/A",
-      createdAt: populated.createdAt,
-    });
+  // 4️⃣ Socket.IO broadcast
+  try {
+    if (io) {
+      io.emit("ipd:complaint", {
+        patientName: populatedComplaint.patientName,
+        bedNo: populatedComplaint.bedNo,
+        consultantDoctorName:
+          populatedComplaint?.consultantDoctorName?.name || "N/A",
+        contact: populatedComplaint.contact || null,
+        createdAt: populatedComplaint.createdAt,
+      });
+      console.log("📢 Complaint broadcasted via Socket.IO");
+    }
+  } catch (err) {
+    console.error("❌ Socket.IO emit failed:", err.message);
   }
 
-  // 5️⃣ Determine involved departments
-  const DEPTS = [
+  // 5️⃣ Department constants
+  const DEPT_KEYS = [
     "doctorServices",
     "billingServices",
     "housekeeping",
@@ -177,72 +189,174 @@ const createIPDConcern = async (payload, io) => {
     nursing: "nursing_service",
   };
 
-  const formatDeptLabel = (key) =>
+  // ✅ Helper for readable labels
+  const formatDeptLabel = (key = "") =>
     key
       .replace(/([A-Z])/g, " $1")
-      .replace(/services?/gi, " Services")
+      .replace(/services?/i, " Services")
       .replace(/\b\w/g, (c) => c.toUpperCase())
       .trim();
 
-  const involved = DEPTS.filter((key) => {
-    const block = populated[key];
-    return (
-      block &&
-      ((block.text && block.text.trim()) ||
-        (Array.isArray(block.attachments) && block.attachments.length > 0))
-    );
-  });
-
-  console.log("🏥 Involved Departments:", involved);
-
-  // 6️⃣ Send FCM Notifications
-  for (const dept of involved) {
-    const label = formatDeptLabel(dept);
-    const topic = `hospital-${MODULE_MAP[dept]}`;
-
-    const messageData = {
-      complaintId: populated._id.toString(),
-      patientName: populated.patientName,
-      bedNo: String(populated.bedNo || ""),
-      consultantDoctorName:
-        populated?.consultantDoctorName?.name || "N/A",
-      department: label,
-      module: MODULE_MAP[dept],
-      sound: "default",
-    };
-
-    const message = {
-      title: "New Complaint Added",
-      body: `Patient ${populated.patientName} raised a complaint in ${label}.`,
-      topic,
-      data: messageData,
-    };
-
-    console.log("🔔 Sending FCM Notification →");
-    console.log(JSON.stringify(message, null, 2));
-
-    await sendNotification(message).catch((err) =>
-      console.error("❌ FCM Error:", err)
-    );
+  const DEPT_LABEL = {};
+  for (const key of DEPT_KEYS) {
+    DEPT_LABEL[key] = formatDeptLabel(key);
   }
 
-  // 7️⃣ Save DB Notification
-  const dbNotification = await Notification().create({
-    title: "Complaint Registered",
-    body: `Patient ${populated.patientName} raised a complaint.`,
-    data: {
-      complaintId: populated._id.toString(),
-      patientName: populated.patientName,
-      bedNo: populated.bedNo,
-    },
-    department: "IPD",
-    status: "sent",
-  });
+  // 6️⃣ Determine involved departments
+  let involvedDepartments = [];
 
-  console.log("📝 Notification saved to DB:", dbNotification);
+  if (payload?.loginType === "admin") {
+    console.log("🟢 Admin detected — single complaint-wide notification");
+  } else {
+    involvedDepartments = DEPT_KEYS.filter((key) => {
+      const block = populatedComplaint[key];
+      if (!block) return false;
+      const hasText = block.text && String(block.text).trim().length > 0;
+      const hasAttachments =
+        Array.isArray(block.attachments) && block.attachments.length > 0;
+      return hasText || hasAttachments;
+    });
+  }
 
-  return populated;
+  // 7️⃣ Prevent duplicate notifications
+  const cacheKey = `fcm_sent_${populatedComplaint._id}`;
+  if (global[cacheKey]) {
+    console.log("⚠️ Duplicate complaint notification skipped:", cacheKey);
+    return populatedComplaint;
+  }
+  global[cacheKey] = true;
+  setTimeout(() => delete global[cacheKey], 60000);
+
+  // 8️⃣ Send Notifications
+  try {
+    if (payload?.loginType === "admin") {
+      // 🚀 SINGLE notification for admin
+      const topicName = `hospital-all`;
+      const title = "New Complaint Added";
+      const body = `Patient ${populatedComplaint.patientName} (Bed ${populatedComplaint.bedNo}) raised a new complaint covering all departments.`;
+
+      // 🔔 FCM notification
+      await sendNotification({
+        title,
+        body,
+        topic: topicName,
+        data: {
+          complaintId: populatedComplaint._id?.toString(),
+          patientName: populatedComplaint.patientName,
+          bedNo: populatedComplaint.bedNo,
+          consultantDoctorName:
+            populatedComplaint?.consultantDoctorName?.name || "N/A",
+          department: "All Departments",
+          module: "global_complaint",
+        },
+      });
+      console.log(`📨 FCM sent to topic: ${topicName}`);
+
+      // ⚡ Centrifugo broadcast
+      await publishToCentrifugo(topicName, {
+        type: "new_complaint",
+        title,
+        message: body,
+        patientName: populatedComplaint.patientName,
+        bedNo: populatedComplaint.bedNo,
+        consultantDoctorName:
+          populatedComplaint?.consultantDoctorName?.name || "N/A",
+        department: "All Departments",
+        createdAt: populatedComplaint.createdAt,
+      });
+      console.log(`📡 Centrifugo event pushed to channel: ${topicName}`);
+    } else {
+      // 🚀 Department-wise notifications
+      for (const deptKey of involvedDepartments) {
+        const moduleName = MODULE_MAP[deptKey];
+        const label = DEPT_LABEL[deptKey] || formatDeptLabel(deptKey);
+        const topicName = `hospital-${moduleName}`;
+
+        // ✅ Human-friendly body text
+        const body = `Patient ${populatedComplaint.patientName} (Bed ${populatedComplaint.bedNo}) raised a complaint in ${label}.`;
+
+        // 🔔 FCM notification
+        await sendNotification({
+          title: "New Complaint Added",
+          body,
+          topic: topicName,
+          data: {
+            complaintId: populatedComplaint._id?.toString(),
+            patientName: populatedComplaint.patientName,
+            bedNo: String(populatedComplaint.bedNo || ""),
+            consultantDoctorName:
+              populatedComplaint?.consultantDoctorName?.name || "N/A",
+            department: label,
+            module: moduleName,
+            sound: "red_alert",
+          },
+        });
+
+        console.log(`📨 FCM sent to topic: ${topicName}`);
+
+        // ⚡ Centrifugo broadcast per department
+        await publishToCentrifugo(topicName, {
+          type: "new_complaint",
+          title: "New Complaint Registered",
+          message: body,
+          patientName: populatedComplaint.patientName,
+          bedNo: populatedComplaint.bedNo,
+          consultantDoctorName:
+            populatedComplaint?.consultantDoctorName?.name || "N/A",
+          department: label,
+          createdAt: populatedComplaint.createdAt,
+        });
+
+        console.log(`📡 Centrifugo event pushed to channel: ${topicName}`);
+      }
+    }
+  } catch (err) {
+    console.error("❌ Notification send failed:", err.message);
+  }
+
+  // 9️⃣ Save one log entry in DB — readable names in `body`
+  try {
+    // 🟢 Convert backend keys into readable department labels for UI and emails
+    const readableDepartments =
+      payload?.loginType === "admin"
+        ? "All Departments"
+        : involvedDepartments.length > 0
+          ? involvedDepartments
+            .map((deptKey) => DEPT_LABEL[deptKey] || formatDeptLabel(deptKey))
+            .join(", ")
+          : "N/A";
+
+    // 🟢 Prepare human-friendly body text for email / notification
+    const bodyText = `Patient ${populatedComplaint.patientName} (Bed ${populatedComplaint.bedNo}) raised a complaint for ${readableDepartments}.`;
+
+    // ✅ Save notification  (clean department labels)
+    await Notification()?.create({
+      title: "Complaint Registered",
+      body: bodyText,
+      data: {
+        complaint: populatedComplaint.complaintId?.toString() || "N/A",
+        complaintId: populatedComplaint._id?.toString(),
+        patientName: populatedComplaint.patientName || null,
+        contact: populatedComplaint.contact,
+        bedNo: populatedComplaint.bedNo,
+        consultantDoctorName:
+          populatedComplaint?.consultantDoctorName?.name || "N/A",
+        departments: readableDepartments, // ✅ clean display here too
+      },
+      department:
+        payload?.loginType === "admin" ? "All Departments" : readableDepartments,
+      status: "sent",
+    });
+
+
+    console.log("Complaint notification saved in DB with human-friendly names");
+  } catch (err) {
+    console.error("Failed to save complaint notification:", err.message);
+  }
+
+  return populatedComplaint;
 };
+
 
 
 // ======================================================================

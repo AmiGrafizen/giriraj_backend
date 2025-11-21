@@ -16,6 +16,45 @@ dotenv.config({ path: path.resolve(process.cwd(), "config.env") });
 const tokenExpiry = process.env.ACCESS_TOKEN_EXPIRY;
 const tokenSecret = process.env.ACCESS_TOKEN_SECRET;
 
+function getModel(modelName) {
+  if (!girirajModels || typeof girirajModels !== "object") {
+    console.error("❌ girirajModels not initialized or invalid");
+    return null;
+  }
+
+  const allKeys = Object.keys(girirajModels);
+  if (!allKeys.length) {
+    console.error("⚠️ No models loaded in girirajModels");
+    return null;
+  }
+
+  // 🧠 Try to find by case-insensitive or partial match
+  const lowerTarget = modelName.toLowerCase();
+  const foundKey = allKeys.find(
+    (k) => k.toLowerCase() === lowerTarget || k.toLowerCase().includes(lowerTarget)
+  );
+
+  if (!foundKey) {
+    console.warn(`⚠️ Model "${modelName}" not found. Available models:`, allKeys);
+    return null;
+  }
+
+  let model = girirajModels[foundKey];
+
+  // 🧩 If wrapped { primary, secondary }, unwrap safely
+  if (model && typeof model.find !== "function") {
+    model = model.primary || model.secondary || model.default || model.model;
+  }
+
+  if (!model || typeof model.find !== "function") {
+    console.error(`❌ "${foundKey}" is not a valid Mongoose model.`, model);
+    return null;
+  }
+
+  console.log(`✅ Using model: ${foundKey}`);
+  return model;
+}
+
 /**
  * Generate token
  * @param {User} user
@@ -64,7 +103,8 @@ const saveToken = async (token, userId, expires, type, blacklisted = false) => {
  */
 const verifyToken = async (token, type) => {
   const payload = verify(token, tokenSecret);
-  const tokenDoc = await girirajModels?.GIRIRAJToken.findOne({ token, type, user: payload.sub, blacklisted: false });
+  const tokenModel = getModel("GIRIRAJToken");
+  const tokenDoc = await tokenModel()?.findOne({ token, type, user: payload.sub, blacklisted: false });
   if (!tokenDoc) {
     throw new Error('GIRIRAJToken not found');
   }
@@ -134,8 +174,8 @@ const saveUserToken = async (userId, token) => {
     throw new Error("UserId and token are required");
   }
 
-  // ✅ Add token to user, prevent duplicates
-  const user = await girirajModels.GIRIRAJUser.findByIdAndUpdate(
+  const userModel = getModel("GIRIRAJUser")
+  const user = await userModel.findByIdAndUpdate(
     userId,
     { $addToSet: { fcmTokens: token } }, // $addToSet prevents duplicates
     { new: true }

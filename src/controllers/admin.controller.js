@@ -338,14 +338,25 @@ const escalateComplaint = async (req, res) => {
 const resolveComplaint = async (req, res) => {
   try {
     const concernId = req.params.id;
-    const { note, proof } = req.body;
-    const userId = req.user?._id; // from auth middleware
+    const { note, proof, department } = req.body;
+    const userId = req.user?._id || req.body.userId;
 
     if (!note) {
       return res.status(400).json({ error: "Resolution note is required" });
     }
 
-    const updatedConcern = await adminService.resolveConcern(concernId, { note, proof, userId });
+    if (!department) {
+      return res.status(400).json({ error: "Department is required" });
+    }
+
+    console.log("concernId", concernId);
+    console.log("req.body", req.body);
+    console.log("userId", userId);
+
+    const updatedConcern = await adminService.resolveConcern(
+      concernId,
+      { note, proof, userId, department }
+    );
 
     res.json({
       message: "Complaint resolved successfully",

@@ -165,10 +165,9 @@ const createIPDPatient = async (payload) => {
 };
 
 const getIPDPatients = async (page = 1, limit = 50) => {
-  const Model = girirajModels.GIRIRAJIPDPatients.primary; // ✅ use actual model
-
+  const IPDModel = getModel("GIRIRAJIPDPatients");
   const [patients, total] = await Promise.all([
-    Model.find()
+    IPDModel.find()
       .select(
         "patientName bedNo contact consultantDoctorName ratings comments overallRecommendation createdAt"
       )
@@ -177,14 +176,21 @@ const getIPDPatients = async (page = 1, limit = 50) => {
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),
-    Model.countDocuments(),
+    IPDModel.countDocuments(),
   ]);
 
-  return { patients, total };
+
+  return {
+    patients,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  };
 };
 
 const getIPDPatientById = async (id) => {
-  const patient = await girirajModels.GIRIRAJIPDPatients?.findById(id).lean()
+  const IPDModel = getModel("GIRIRAJIPDPatients");
+  const patient = await IPDModel.findById(id).lean()
     .select(
       "patientName contact bedNo language consultantDoctorName ratings comments overallRecommendation createdAt updatedAt"
     )
@@ -199,15 +205,16 @@ const getIPDPatientById = async (id) => {
 };
 
 
+
 const deleteIPDPatientById = async (id) => {
-  return await girirajModels.GIRIRAJIPDPatients?.findByIdAndDelete(id);
+  const IPDModel = getModel("GIRIRAJIPDPatients")
+  return await IPDModel.findByIdAndDelete(id);
 }
 
 const updateIPDPatientById = async (id, update) => {
   const patient = await girirajModels.GIRIRAJIPDPatients?.findByIdAndUpdate(id, update, { new: true });
   if (!patient) throw new ApiError(404, 'Patient not found');
   return patient;
-
 };
 
 async function getIPDPatientByRating() {
@@ -702,229 +709,183 @@ function calcTATHours(start, end) {
 
 // Main KPI function
 async function getKpis(range) {
-  try {
-    const { start, end } = parseRange(range);
+  const { start, end } = parseRange(range);
+  const IPDConcern = getModel("GIRIRAJIPDConcern")
 
-    // ✅ Resolve IPD Concern model safely
-    const IPDConcernModel = getModel("GIRIRAJIPDConcern");
-    if (!IPDConcernModel) throw new Error("GIRIRAJIPDConcern model not found!");
+  // 1️⃣ Fetch feedbacks in range
+  const curr = await loadFeedbackWindow({ from: start, to: end });
 
-    // 1️⃣ Fetch feedbacks
-    const curr = (await loadFeedbackWindow({ from: start, to: end })) || [];
+  // 2️⃣ Fetch concerns (complaints)
+  const concerns = await IPDConcern.find({
+    createdAt: { $gte: start, $lte: end },
+  })
+    .select("status createdAt resolution.resolvedAt")
+    .lean();
 
-    // 2️⃣ Fetch concerns
-    const concerns = await IPDConcernModel.find({
-      createdAt: { $gte: start, $lte: end },
-    })
-      .select("status createdAt resolution.resolvedAt")
-      .lean();
+  const totalConcern = concerns.length;
+  const openIssues = concerns.filter((c) =>
+    /^(open|partial)$/i.test(c.status)
+  ).length;
+  const resolvedConcerns = concerns.filter((c) =>
+    /^resolved$/i.test(c.status)
+  );
+  const resolvedIssues = resolvedConcerns.length;
 
-    const totalConcern = concerns.length;
-    const openIssues = concerns.filter((c) =>
-      /^(open|partial)$/i.test(c.status)
-    ).length;
-    const resolvedConcerns = concerns.filter((c) =>
-      /^resolved$/i.test(c.status)
+  // 3️⃣ Calculate Avg Resolution Time (TAT)
+  const validResolved = resolvedConcerns.filter(
+    (c) =>
+      c.createdAt &&
+      c.resolution?.resolvedAt &&
+      new Date(c.resolution.resolvedAt) > new Date(c.createdAt)
+  );
+
+  let avgHours = 0;
+  if (validResolved.length > 0) {
+    const totalHours = validResolved.reduce(
+      (sum, c) => sum + calcTATHours(c.createdAt, c.resolution.resolvedAt),
+      0
     );
-    const resolvedIssues = resolvedConcerns.length;
+    avgHours = totalHours / validResolved.length;
+  }
 
-    // 3️⃣ Calculate Avg Resolution Time (TAT)
-    const validResolved = resolvedConcerns.filter(
-      (c) =>
-        c.createdAt &&
-        c.resolution?.resolvedAt &&
-        new Date(c.resolution.resolvedAt) > new Date(c.createdAt)
-    );
+  const totalResolvedTAT = {
+    hours: r1(avgHours),
+    display: formatTAT(avgHours),
+  };
 
-    let avgHours = 0;
-    if (validResolved.length > 0) {
-      const totalHours = validResolved.reduce(
-        (sum, c) => sum + calcTATHours(c.createdAt, c.resolution.resolvedAt),
-        0
-      );
-      avgHours = totalHours / validResolved.length;
-    }
+  // 4️⃣ Compute NPS
+  const npsResponses = curr
+    .map((r) => r.overallRecommendation)
+    .filter((x) => x != null);
+  const promoters = npsResponses.filter((x) => x >= 9).length;
+  const detractors = npsResponses.filter((x) => x <= 6).length;
+  const totalNpsResponses = npsResponses.length;
+  const npsPercentage = totalNpsResponses
+    ? r1(((promoters - detractors) / totalNpsResponses) * 100)
+    : 0;
 
-    const totalResolvedTAT = {
-      hours: r1(avgHours),
-      display: formatTAT(avgHours),
-    };
+  // 5️⃣ Build chart data
+  const buckets = new Map();
+  for (const r of curr) {
+    const dKey = dayjs(r.createdAt).format("YYYY-MM-DD");
+    if (!buckets.has(dKey)) buckets.set(dKey, { opd: [], ipd: [] });
 
-    // 4️⃣ Compute NPS
-    const npsResponses = curr
-      .map((r) => r.overallRecommendation)
-      .filter((x) => x != null);
-    const promoters = npsResponses.filter((x) => x >= 9).length;
-    const detractors = npsResponses.filter((x) => x <= 6).length;
-    const totalNpsResponses = npsResponses.length;
-    const npsPercentage = totalNpsResponses
-      ? r1(((promoters - detractors) / totalNpsResponses) * 100)
+    if (r.type === "OPD") buckets.get(dKey).opd.push(r.avgRating || 0);
+    if (r.type === "IPD") buckets.get(dKey).ipd.push(r.avgRating || 0);
+  }
+
+  const labels = [];
+  const opdSeries = [];
+  const ipdSeries = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = dayjs().subtract(i, "day");
+    const key = d.format("YYYY-MM-DD");
+    labels.push(d.format("ddd D"));
+
+    const b = buckets.get(key) || { opd: [], ipd: [] };
+    const avgOpd = b.opd.length
+      ? r1(b.opd.reduce((s, x) => s + x, 0) / b.opd.length)
+      : 0;
+    const avgIpd = b.ipd.length
+      ? r1(b.ipd.reduce((s, x) => s + x, 0) / b.ipd.length)
       : 0;
 
-    // 5️⃣ Build chart data
-    const buckets = new Map();
-    for (const r of curr) {
-      const dKey = dayjs(r.createdAt).format("YYYY-MM-DD");
-      if (!buckets.has(dKey)) buckets.set(dKey, { opd: [], ipd: [] });
-
-      if (r.type === "OPD") buckets.get(dKey).opd.push(r.avgRating || 0);
-      if (r.type === "IPD") buckets.get(dKey).ipd.push(r.avgRating || 0);
-    }
-
-    const labels = [];
-    const opdSeries = [];
-    const ipdSeries = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = dayjs().subtract(i, "day");
-      const key = d.format("YYYY-MM-DD");
-      labels.push(d.format("ddd D"));
-
-      const b = buckets.get(key) || { opd: [], ipd: [] };
-      const avgOpd = b.opd.length
-        ? r1(b.opd.reduce((s, x) => s + x, 0) / b.opd.length)
-        : 0;
-      const avgIpd = b.ipd.length
-        ? r1(b.ipd.reduce((s, x) => s + x, 0) / b.ipd.length)
-        : 0;
-
-      opdSeries.push(avgOpd);
-      ipdSeries.push(avgIpd);
-    }
-
-    // 6️⃣ Department-wise Avg TAT
-    const departments = [
-      "doctorServices",
-      "billingServices",
-      "housekeeping",
-      "maintenance",
-      "diagnosticServices",
-      "dietitianServices",
-      "security",
-      "nursing",
-    ];
-    const avgTATByDepartment = {};
-
-    for (const dept of departments) {
-      const resolvedDept = await IPDConcernModel.find({
-        [`${dept}.status`]: "resolved",
-        createdAt: { $gte: start, $lte: end },
-      })
-        .select("createdAt resolution.resolvedAt")
-        .lean();
-
-      if (resolvedDept.length) {
-        const totalHours = resolvedDept.reduce(
-          (sum, c) => sum + calcTATHours(c.createdAt, c.resolution?.resolvedAt),
-          0
-        );
-        const avgDeptHours = totalHours / resolvedDept.length;
-        avgTATByDepartment[dept] = formatTAT(avgDeptHours);
-      }
-    }
-
-    // 7️⃣ Return KPIs
-    return {
-      totalFeedback: curr.length,
-      averageRating: {
-        value: curr.length
-          ? r1(curr.reduce((s, r) => s + (r.avgRating || 0), 0) / curr.length)
-          : 0,
-      },
-      npsRating: { value: npsPercentage },
-      totalConcern,
-      openIssues,
-      resolvedIssues,
-      totalResolvedTAT,
-      avgTATByDepartment,
-      earning: {
-        weeklyAverage: ipdSeries.filter((x) => x > 0).length
-          ? r1(
-              ipdSeries.reduce((s, x) => s + x, 0) /
-                ipdSeries.filter((x) => x > 0).length
-            )
-          : 0,
-        series: ipdSeries,
-        labels,
-      },
-      expense: {
-        weeklyAverage: opdSeries.filter((x) => x > 0).length
-          ? r1(
-              opdSeries.reduce((s, x) => s + x, 0) /
-                opdSeries.filter((x) => x > 0).length
-            )
-          : 0,
-        series: opdSeries,
-        labels,
-      },
-    };
-  } catch (err) {
-    console.error("getKpis failed:", err.message);
-    return {
-      totalFeedback: 0,
-      averageRating: { value: 0 },
-      npsRating: { value: 0 },
-      totalConcern: 0,
-      openIssues: 0,
-      resolvedIssues: 0,
-      totalResolvedTAT: { hours: 0, display: "0h 0m" },
-      avgTATByDepartment: {},
-      earning: { weeklyAverage: 0, series: [], labels: [] },
-      expense: { weeklyAverage: 0, series: [], labels: [] },
-    };
+    opdSeries.push(avgOpd);
+    ipdSeries.push(avgIpd);
   }
+
+  // 6️⃣ Optional: Department-wise avg TAT (for analytics)
+  const departments = [
+    "doctorServices",
+    "billingServices",
+    "housekeeping",
+    "maintenance",
+    "diagnosticServices",
+    "dietitianServices",
+    "security",
+    "nursing",
+  ];
+  const avgTATByDepartment = {};
+  for (const dept of departments) {
+    const resolvedDept = await IPDConcern.find({
+      [`${dept}.status`]: "resolved",
+      createdAt: { $gte: start, $lte: end },
+    })
+      .select("createdAt resolution.resolvedAt")
+      .lean();
+
+    if (resolvedDept.length) {
+      const totalHours = resolvedDept.reduce(
+        (sum, c) => sum + calcTATHours(c.createdAt, c.resolution?.resolvedAt),
+        0
+      );
+      const avgDeptHours = totalHours / resolvedDept.length;
+      avgTATByDepartment[dept] = formatTAT(avgDeptHours);
+    }
+  }
+
+  // 7️⃣ Return KPIs
+  return {
+    totalFeedback: curr.length,
+    averageRating: {
+      value: curr.length
+        ? r1(curr.reduce((s, r) => s + (r.avgRating || 0), 0) / curr.length)
+        : 0,
+    },
+    npsRating: { value: npsPercentage },
+    totalConcern,
+    openIssues,
+    resolvedIssues,
+    totalResolvedTAT, // ✅ New TAT field here
+    avgTATByDepartment, // ✅ Optional breakdown
+    earning: {
+      weeklyAverage: ipdSeries.filter((x) => x > 0).length
+        ? r1(
+            ipdSeries.reduce((s, x) => s + x, 0) /
+              ipdSeries.filter((x) => x > 0).length
+          )
+        : 0,
+      series: ipdSeries,
+      labels,
+    },
+    expense: {
+      weeklyAverage: opdSeries.filter((x) => x > 0).length
+        ? r1(
+            opdSeries.reduce((s, x) => s + x, 0) /
+              opdSeries.filter((x) => x > 0).length
+          )
+        : 0,
+      series: opdSeries,
+      labels,
+    },
+  };
 }
 
 async function getIpdTrends(range) {
-  try {
-    const { start, end } = parseRange(range);
+  const { start, end } = parseRange(range);
+  const IPDModel = getModel("GIRIRAJIPDPatients")
+  const rows = await IPDModel.find({
+    createdAt: { $gte: start, $lte: end },
+  }).lean()
+    .select({ ratings: 1, createdAt: 1 })
+    .lean();
 
-    // ✅ Use active database model instead of static girirajModels
-    const IpdModel = getActiveModel("GIRIRAJIPDPatients");
-
-    // 1️⃣ Fetch patient rating data within the date range
-    const rows = await IpdModel.find({
-      createdAt: { $gte: start, $lte: end },
-    })
-      .select({ ratings: 1, createdAt: 1 })
-      .lean();
-
-    if (!rows.length) {
-      console.log("⚠️ No IPD data found for the given range");
-      return { series: [], improvement: 0 };
-    }
-
-    // 2️⃣ Calculate month-wise averages
-    const map = new Map(); // YYYY-MM → { sum, count, label }
-
-    for (const r of rows) {
-      const avg = avgFromRatings(r.ratings, IPD_KEYS); // assume IPD_KEYS are globally available or imported
-      const { k, label } = monthKeyLabel(r.createdAt);
-
-      if (!map.has(k)) map.set(k, { sum: 0, count: 0, label });
-      const bucket = map.get(k);
-      bucket.sum += avg;
-      bucket.count += 1;
-    }
-
-    // 3️⃣ Create sorted trend data
-    const series = Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([, v]) => ({
-        date: v.label,
-        value: v.count ? r1(v.sum / v.count) : 0,
-      }));
-
-    // 4️⃣ Calculate improvement %
-    const last = series.at(-1)?.value ?? 0;
-    const prev = series.at(-2)?.value ?? 0;
-    const improvement = r1(last - prev);
-
-    console.log(`✅ IPD Trend: ${series.length} months processed.`);
-    return { series, improvement };
-  } catch (error) {
-    console.error("❌ Error in getIpdTrends:", error);
-    return { series: [], improvement: 0 };
+  const map = new Map(); // YYYY-MM -> {sum,count,label}
+  for (const r of rows) {
+    const avg = avgFromRatings(r.ratings, IPD_KEYS);
+    const { k, label } = monthKeyLabel(r.createdAt);
+    if (!map.has(k)) map.set(k, { sum: 0, count: 0, label });
+    const b = map.get(k);
+    b.sum += avg;
+    b.count += 1;
   }
+  const series = Array.from(map.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([, v]) => ({ date: v.label, value: v.count ? r1(v.sum / v.count) : 0 }));
+
+  const last = series.at(-1)?.value ?? 0;
+  const prev = series.at(-2)?.value ?? 0;
+  return { series, improvement: r1(last - prev) };
 }
 
 async function getOpdSatisfaction(range) {
@@ -956,56 +917,18 @@ async function getOpdSatisfaction(range) {
   };
 }
 
- async function getConcerns({ from, to, modules = [], loginType }) {
-  try {
-    const start = from ? new Date(from) : dayjs().startOf("week").toDate();
-    const end = to ? new Date(to) : dayjs().endOf("week").toDate();
+async function getConcerns({ from, to, modules = [], loginType }) {
+  const start = from ? new Date(from) : dayjs().startOf("week").toDate();
+  const end = to ? new Date(to) : dayjs().endOf("week").toDate();
 
-    // ✅ Use the active database automatically
-    const IpdConcern = getActiveModel("GIRIRAJIPDConcern");
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
 
-    let concerns = [];
+  let concerns = [];
 
-    /* -------------------------------------------------
-       🟩 ADMIN: Fetch all complaints, ignore date range
-    ------------------------------------------------- */
-    if (loginType?.toLowerCase() === "admin") {
-      concerns = await IpdConcern.find({})
-        .select("complaintId status")
-        .lean();
-
-      const normalizeStatus = (s) => {
-        if (!s) return "Open";
-        const lower = String(s).toLowerCase();
-        if (lower === "resolved") return "Resolved";
-        if (lower === "in_progress" || lower === "in progress") return "In Progress";
-        return "Open";
-      };
-
-      const counts = { Open: 0, "In Progress": 0, Resolved: 0 };
-      for (const c of concerns) {
-        const status = normalizeStatus(c.status);
-        counts[status] = (counts[status] || 0) + 1;
-      }
-
-      return [
-        {
-          weekLabel: `${dayjs(start).format("D MMM")} - ${dayjs(end).format("D MMM")}`,
-          countsByModule: { all: counts },
-          total: concerns.length,
-        },
-      ];
-    }
-
-    /* -------------------------------------------------
-       🟨 NON-ADMIN: Filter by date & calculate module stats
-    ------------------------------------------------- */
-    concerns = await IpdConcern.find({
-      createdAt: { $gte: start, $lte: end },
-    })
-      .select(
-        "complaintId status doctorServices billingServices housekeeping maintenance diagnosticServices dietitianServices security nursing"
-      )
+  if (loginType?.toLowerCase() === "admin") {
+    // ✅ Fetch all concerns (ignore date range)
+    concerns = await IPDConcern.find({}).lean()
+      .select("complaintId status")
       .lean();
 
     const normalizeStatus = (s) => {
@@ -1016,187 +939,199 @@ async function getOpdSatisfaction(range) {
       return "Open";
     };
 
-    const complaintMap = {};
-    for (const c of concerns) {
-      const complaintId = c.complaintId;
+    const counts = { Open: 0, "In Progress": 0, Resolved: 0 };
+    concerns.forEach((c) => {
       const status = normalizeStatus(c.status);
-
-      if (!complaintMap[complaintId]) {
-        complaintMap[complaintId] = { modules: new Set(), status };
-      }
-
-      if (c.doctorServices) complaintMap[complaintId].modules.add("doctor_service");
-      if (c.billingServices) complaintMap[complaintId].modules.add("billing_service");
-      if (c.housekeeping) complaintMap[complaintId].modules.add("housekeeping");
-      if (c.maintenance) complaintMap[complaintId].modules.add("maintenance");
-      if (c.diagnosticServices)
-        complaintMap[complaintId].modules.add("diagnostic_service");
-      if (c.dietitianServices) complaintMap[complaintId].modules.add("dietetics");
-      if (c.security) complaintMap[complaintId].modules.add("security");
-      if (c.nursing) complaintMap[complaintId].modules.add("nursing");
-
-      complaintMap[complaintId].status = status;
-    }
-
-    // Initialize counts
-    const countsByModule = {};
-    for (const mod of modules) {
-      countsByModule[mod] = { Open: 0, "In Progress": 0, Resolved: 0 };
-    }
-
-    // Count per module
-    let total = 0;
-    for (const { modules: modSet, status } of Object.values(complaintMap)) {
-      const intersection = [...modSet].filter((m) => modules.includes(m));
-      if (intersection.length > 0) {
-        total += 1;
-        for (const m of intersection) {
-          countsByModule[m][status] += 1;
-        }
-      }
-    }
+      counts[status] = (counts[status] || 0) + 1;
+    });
 
     return [
       {
         weekLabel: `${dayjs(start).format("D MMM")} - ${dayjs(end).format("D MMM")}`,
-        countsByModule,
-        total,
-      },
-    ];
-  } catch (error) {
-    console.error("❌ Error in getConcerns:", error);
-    return [
-      {
-        weekLabel: `${dayjs().startOf("week").format("D MMM")} - ${dayjs()
-          .endOf("week")
-          .format("D MMM")}`,
-        countsByModule: {},
-        total: 0,
+        countsByModule: { all: counts }, // ✅ show breakdown for admin
+        total: concerns.length,
       },
     ];
   }
+
+  // ✅ For non-admin: respect date filter & module breakdown
+  concerns = await IPDConcern.find({
+    createdAt: { $gte: start, $lte: end },
+  }).lean()
+    .select(
+      "complaintId status doctorServices billingServices housekeeping maintenance diagnosticServices dietitianServices security nursing"
+    )
+    .lean();
+
+  const normalizeStatus = (s) => {
+    if (!s) return "Open";
+    const lower = String(s).toLowerCase();
+    if (lower === "resolved") return "Resolved";
+    if (lower === "in_progress" || lower === "in progress") return "In Progress";
+    return "Open";
+  };
+
+  let countsByModule = {};
+  let total = 0;
+
+  const complaintMap = {};
+  for (const c of concerns) {
+    const complaintId = c.complaintId;
+    const status = normalizeStatus(c.status);
+
+    if (!complaintMap[complaintId]) {
+      complaintMap[complaintId] = { modules: new Set(), status };
+    }
+
+    if (c.doctorServices) complaintMap[complaintId].modules.add("doctor_service");
+    if (c.billingServices) complaintMap[complaintId].modules.add("billing_service");
+    if (c.housekeeping) complaintMap[complaintId].modules.add("housekeeping");
+    if (c.maintenance) complaintMap[complaintId].modules.add("maintenance");
+    if (c.diagnosticServices) complaintMap[complaintId].modules.add("diagnostic_service");
+    if (c.dietitianServices) complaintMap[complaintId].modules.add("dietetics");
+    if (c.security) complaintMap[complaintId].modules.add("security");
+    if (c.nursing) complaintMap[complaintId].modules.add("nursing");
+
+    complaintMap[complaintId].status = status;
+  }
+
+  // Init counters
+  for (const mod of modules) {
+    countsByModule[mod] = { Open: 0, "In Progress": 0, Resolved: 0 };
+  }
+
+  // Count per module
+  for (const { modules: modSet, status } of Object.values(complaintMap)) {
+    const intersection = [...modSet].filter((m) => modules.includes(m));
+    if (intersection.length > 0) {
+      total += 1;
+      intersection.forEach((m) => {
+        countsByModule[m][status] += 1;
+      });
+    }
+  }
+
+  return [
+    {
+      weekLabel: `${dayjs(start).format("D MMM")} - ${dayjs(end).format("D MMM")}`,
+      countsByModule,
+      total,
+    },
+  ];
 }
 
- async function getDepartmentAnalysis(range) {
-  try {
-    const { start, end } = parseRange(range);
+async function getDepartmentAnalysis(range) {
+  const { start, end } = parseRange(range);
+  const IPDConcern = getModel("GIRIRAJIPDConcern");
 
-    // ✅ Get active model from whichever DB is currently active
-    const IpdConcern = getActiveModel("GIRIRAJIPDConcern");
+  // --- 1️⃣ Fetch complaints (with fallback department extraction)
+  const rawComplaints = await IPDConcern
+    ?.find({ createdAt: { $gte: start, $lte: end } }).lean()
+    .select("department status resolutionTime doctorServices billingServices housekeeping maintenance diagnosticServices dietitianServices security nursing")
+    .lean() || [];
 
-    // --- 1️⃣ Fetch complaints
-    const rawComplaints =
-      (await IpdConcern.find({
-        createdAt: { $gte: start, $lte: end },
-      })
-        .select(
-          "department status resolutionTime doctorServices billingServices housekeeping maintenance diagnosticServices dietitianServices security nursing"
-        )
-        .lean()) || [];
+  // --- 2️⃣ Normalize complaint departments properly
+  const complaints = [];
+  for (const c of rawComplaints) {
+    let dept = c.department?.trim();
 
-    // --- 2️⃣ Normalize departments
-    const complaints = [];
-    for (const c of rawComplaints) {
-      let dept = c.department?.trim();
-
-      // Infer department from filled sections if missing
-      if (!dept) {
-        for (const key of Object.keys(DEPT_LABEL)) {
-          const field = c[key];
-          if (field && (field.text || (field.attachments?.length > 0))) {
-            dept = DEPT_LABEL[key];
-            break;
-          }
-        }
-      }
-
-      complaints.push({
-        department: dept || "Unknown",
-        status: (c.status || "open").toLowerCase(),
-        resolutionTime: c.resolutionTime || 0,
-      });
-    }
-
-    // --- 3️⃣ Aggregate complaints by department
-    const compByDept = {};
-    for (const c of complaints) {
-      if (!compByDept[c.department]) {
-        compByDept[c.department] = {
-          concerns: 0,
-          resolved: 0,
-          pending: 0,
-          totalResolution: 0,
-          totalResolved: 0,
-        };
-      }
-
-      const agg = compByDept[c.department];
-      agg.concerns += 1;
-
-      if (c.status === "resolved") {
-        agg.resolved += 1;
-        agg.totalResolved += 1;
-        agg.totalResolution += c.resolutionTime;
-      } else if (["open", "in_progress"].includes(c.status)) {
-        agg.pending += 1;
-      }
-    }
-
-    // --- 4️⃣ Compute avg resolution time
-    for (const dept in compByDept) {
-      const d = compByDept[dept];
-      d.avgResolution = d.totalResolved > 0 ? d.totalResolution / d.totalResolved : 0;
-    }
-
-    // --- 5️⃣ Load ratings feedback
-    const rows = (await loadFeedbackWindow(range)) || [];
-    const ratingAgg = {};
-
-    for (const r of rows) {
-      const ratings = r?.ratings || {};
-      for (const key of Object.keys(DEPT_LABELS)) {
-        const deptLabel = DEPT_LABELS[key];
-        const v = Number(ratings[key]);
-        if (v >= 1 && v <= 5) {
-          if (!ratingAgg[deptLabel]) ratingAgg[deptLabel] = { sum: 0, count: 0 };
-          ratingAgg[deptLabel].sum += v;
-          ratingAgg[deptLabel].count += 1;
+    // If department field is missing, infer from which service field is filled
+    if (!dept) {
+      const possibleDeps = Object.keys(DEPT_LABEL);
+      for (const key of possibleDeps) {
+        if (c[key] && (c[key].text || (c[key].attachments?.length > 0))) {
+          dept = DEPT_LABEL[key];
+          break;
         }
       }
     }
 
-    // --- 6️⃣ Merge complaints & ratings
-    const allDepts = new Set([...Object.keys(compByDept), ...Object.keys(ratingAgg)]);
-    const result = [];
-
-    for (const department of allDepts) {
-      const c = compByDept[department] || {};
-      const r = ratingAgg[department];
-      const avgRating = r ? r1(r.sum / Math.max(1, r.count)) : 0;
-
-      const concerns = c.concerns || 0;
-      const resolved = c.resolved || 0;
-      const pending = c.pending || Math.max(0, concerns - resolved);
-      const workload = pending >= 10 ? "High" : pending >= 5 ? "Medium" : "Low";
-
-      result.push({
-        department: department || "Unknown",
-        concerns,
-        resolved,
-        pending,
-        avgTime: formatMinutes(c.avgResolution || 0),
-        satisfaction: Math.round((avgRating / 5) * 100),
-        value: avgRating,
-        workload,
-      });
-    }
-
-    // --- 7️⃣ Sort alphabetically
-    return result.sort((a, b) => a.department.localeCompare(b.department));
-  } catch (error) {
-    console.error("❌ Error in getDepartmentAnalysis:", error);
-    return [];
+    complaints.push({
+      department: dept || "Unknown",
+      status: c.status?.toLowerCase() || "open",
+      resolutionTime: c.resolutionTime || 0,
+    });
   }
+
+  // --- 3️⃣ Aggregate manually by department
+  const compByDept = {};
+  for (const c of complaints) {
+    if (!compByDept[c.department]) {
+      compByDept[c.department] = {
+        concerns: 0,
+        resolved: 0,
+        pending: 0,
+        totalResolution: 0,
+        totalResolved: 0,
+      };
+    }
+
+    const agg = compByDept[c.department];
+    agg.concerns += 1;
+    if (c.status === "resolved") {
+      agg.resolved += 1;
+      agg.totalResolved += 1;
+      agg.totalResolution += c.resolutionTime;
+    } else if (["open", "in_progress"].includes(c.status)) {
+      agg.pending += 1;
+    }
+  }
+
+  // --- 4️⃣ Get average resolution time per department
+  for (const dept in compByDept) {
+    const d = compByDept[dept];
+    d.avgResolution = d.totalResolved > 0 ? d.totalResolution / d.totalResolved : 0;
+  }
+
+  // --- 5️⃣ Fetch feedback ratings (for satisfaction)
+  const rows = (await loadFeedbackWindow(range)) || [];
+
+  const ratingAgg = {}; // deptName -> {sum,count}
+  for (const r of rows) {
+    const ratings = r?.ratings || {};
+    for (const key of Object.keys(DEPT_LABELS)) {
+      const deptLabel = DEPT_LABELS[key]; // e.g. "Housekeeping"
+      const v = Number(ratings[key]);
+      if (v >= 1 && v <= 5) {
+        if (!ratingAgg[deptLabel]) ratingAgg[deptLabel] = { sum: 0, count: 0 };
+        ratingAgg[deptLabel].sum += v;
+        ratingAgg[deptLabel].count += 1;
+      }
+    }
+  }
+
+  // --- 6️⃣ Merge complaint + feedback data
+  const allDepts = new Set([
+    ...Object.keys(compByDept),
+    ...Object.keys(ratingAgg),
+  ]);
+
+  const result = [];
+  for (const department of allDepts) {
+    const c = compByDept[department] || {};
+    const r = ratingAgg[department];
+    const avgRating = r ? r1(r.sum / Math.max(1, r.count)) : 0;
+
+    const concerns = c.concerns || 0;
+    const resolved = c.resolved || 0;
+    const pending = c.pending || Math.max(0, concerns - resolved);
+    const workload =
+      pending >= 10 ? "High" : pending >= 5 ? "Medium" : "Low";
+
+    result.push({
+      department: department || "Unknown",
+      concerns,
+      resolved,
+      pending,
+      avgTime: formatMinutes(c.avgResolution || 0),
+      satisfaction: Math.round((avgRating / 5) * 100),
+      value: avgRating,
+      workload,
+    });
+  }
+
+  // --- 7️⃣ Sort and return
+  return result.sort((a, b) => a.department.localeCompare(b.department));
 }
 
 async function getRecentFeedbacks(range, limit = 6) {
@@ -1215,160 +1150,110 @@ async function getRecentFeedbacks(range, limit = 6) {
 }
 
 
-/**
- * 🧠 Get daily feedback trends (OPD + IPD) for current month
- */
-export async function getDailyFeedback(range) {
-  try {
-    const { start, end } = parseRange(range);
+async function getDailyFeedback(range) {
+  const { start, end } = parseRange(range);
 
-    // ✅ Dynamically find the correct models
-    const IPDModel = getModel("GIRIRAJIPDPatients");
-    const OPDModel = getModel("GIRIRAJOpd");
+  // models (with safe fallbacks just in case the exact casing differs)
+  const IPDModel = getModel("GIRIRAJIPDPatients");
 
-    if (!IPDModel && !OPDModel) {
-      console.error("❌ Neither IPD nor OPD models found!");
-      return {
-        labels: [],
-        opdSeries: [],
-        ipdSeries: [],
-        today: { opd: 0, ipd: 0 },
-        yesterday: { opd: 0, ipd: 0 },
-      };
-    }
+  const OPDModel = getModel("GIRIRAJOpds");
 
-    // ✅ Fetch both IPD & OPD data safely
-    const [ipdRows, opdRows] = await Promise.all([
-      IPDModel
-        ? IPDModel.find({ createdAt: { $gte: start, $lte: end } })
-            .select({ ratings: 1, createdAt: 1 })
-            .lean()
-        : [],
-      OPDModel
-        ? OPDModel.find({ createdAt: { $gte: start, $lte: end } })
-            .select({ ratings: 1, createdAt: 1 })
-            .lean()
-        : [],
-    ]);
+  const [ipdRows, opdRows] = await Promise.all([
+    IPDModel
+      ? IPDModel.find({ createdAt: { $gte: start, $lte: end } })
+        .select({ ratings: 1, createdAt: 1 })
+        .lean()
+      : [],
+    OPDModel
+      ? OPDModel.find({ createdAt: { $gte: start, $lte: end } })
+        .select({ ratings: 1, createdAt: 1 })
+        .lean()
+      : [],
+  ]);
 
-    const buckets = {};
+  // YYYY-MM-DD -> {opd:[], ipd:[]}
+  const buckets = {};
 
-    // 🟣 Helper to initialize daily bucket
-    const pushAvg = (key) => {
-      const k = dayjs(key).format("YYYY-MM-DD");
-      if (!buckets[k]) buckets[k] = { opd: [], ipd: [] };
-      return buckets[k];
-    };
+  const pushAvg = (arr, key) => {
+    const k = dayjs(key).format("YYYY-MM-DD");
+    if (!buckets[k]) buckets[k] = { opd: [], ipd: [] };
+    return buckets[k];
+  };
 
-    // 🩺 Process IPD feedbacks
-    for (const r of ipdRows) {
-      const avgIpd = avgFromRatings(r?.ratings || {}, IPD_KEYS) || 0;
-      pushAvg(r.createdAt).ipd.push(avgIpd);
-    }
-
-    // 👩‍⚕️ Process OPD feedbacks
-    for (const r of opdRows) {
-      const avgOpd = avgFromRatings(r?.ratings || {}, OPD_KEYS) || 0;
-      pushAvg(r.createdAt).opd.push(avgOpd);
-    }
-
-    // 📆 Build trend data till today
-    const today = dayjs();
-    const startOfMonth = today.startOf("month");
-    const daysInMonth = today.date();
-
-    const labels = [];
-    const opdSeries = [];
-    const ipdSeries = [];
-
-    for (let i = 1; i <= daysInMonth; i++) {
-      const d = startOfMonth.date(i);
-      const key = d.format("YYYY-MM-DD");
-      labels.push(d.format("D MMM"));
-
-      const b = buckets[key] || { opd: [], ipd: [] };
-
-      const avgOpd =
-        b.opd.length > 0
-          ? r1(b.opd.reduce((sum, x) => sum + x, 0) / b.opd.length)
-          : 0;
-      const avgIpd =
-        b.ipd.length > 0
-          ? r1(b.ipd.reduce((sum, x) => sum + x, 0) / b.ipd.length)
-          : 0;
-
-      opdSeries.push(avgOpd);
-      ipdSeries.push(avgIpd);
-    }
-
-    // 📊 Final output object
-    return {
-      labels,
-      opdSeries,
-      ipdSeries,
-      today: {
-        opd: opdSeries.at(-1) ?? 0,
-        ipd: ipdSeries.at(-1) ?? 0,
-      },
-      yesterday: {
-        opd: opdSeries.at(-2) ?? 0,
-        ipd: ipdSeries.at(-2) ?? 0,
-      },
-    };
-  } catch (error) {
-    console.error("❌ getDailyFeedback error:", error);
-    return {
-      labels: [],
-      opdSeries: [],
-      ipdSeries: [],
-      today: { opd: 0, ipd: 0 },
-      yesterday: { opd: 0, ipd: 0 },
-    };
+  // IPD: use IPD_KEYS
+  for (const r of ipdRows) {
+    const avgIpd = avgFromRatings(r?.ratings || {}, IPD_KEYS) || 0;
+    pushAvg(ipdRows, r.createdAt).ipd.push(avgIpd);
   }
+
+  // OPD: use OPD_KEYS
+  for (const r of opdRows) {
+    const avgOpd = avgFromRatings(r?.ratings || {}, OPD_KEYS) || 0;
+    pushAvg(opdRows, r.createdAt).opd.push(avgOpd);
+  }
+
+  // Build series for entire month till today
+  const today = dayjs();
+  const startOfMonth = today.startOf("month");
+  const daysInMonth = today.date(); // only up to current day
+
+  const labels = [];
+  const opdSeries = [];
+  const ipdSeries = [];
+
+  for (let i = 1; i <= daysInMonth; i++) {
+    const d = startOfMonth.date(i);
+    const key = d.format("YYYY-MM-DD");
+    labels.push(d.format("D MMM"));
+
+    const b = buckets[key] || { opd: [], ipd: [] };
+    const avgOpd = b.opd.length ? r1(b.opd.reduce((s, x) => s + x, 0) / b.opd.length) : 0;
+    const avgIpd = b.ipd.length ? r1(b.ipd.reduce((s, x) => s + x, 0) / b.ipd.length) : 0;
+
+    opdSeries.push(avgOpd);
+    ipdSeries.push(avgIpd);
+  }
+
+  return {
+    labels,
+    opdSeries,
+    ipdSeries,
+    today: {
+      opd: opdSeries.at(-1) ?? 0,
+      ipd: ipdSeries.at(-1) ?? 0,
+    },
+    yesterday: {
+      opd: opdSeries.at(-2) ?? 0,
+      ipd: ipdSeries.at(-2) ?? 0,
+    },
+  };
 }
 
 
 // ✅ Calculate total user counts and total resolved concerns (TAT)
 async function getExtraStats() {
-  try {
-    // ✅ Resolve models safely
-    const UserModel = getModel("GIRIRAJUser");
-    const RoleUserModel = getModel("GIRIRAJRoleUser");
-    const IpdConcernModel = getModel("GIRIRAJIPDConcern");
+  const user = getModel("GIRIRAJUser");
+  const roleUser = getModel("GIRIRAJRoleUser");
+  // ---- 1️⃣ Count users ----
+  const totalUsers = await user.countDocuments({});
+  const totalRoleUsers = await roleUser.countDocuments({});
 
-    if (!UserModel || !RoleUserModel || !IpdConcernModel) {
-      console.error("❌ One or more models missing!");
-      return {
-        totalUsers: 0,
-        totalRoleUsers: 0,
-        totalAdmins: 0,
-        totalTAT: 0,
-      };
-    }
+  // If admins are also in GIRIRAJUser collection with loginType: 'admin'
+  const totalAdmins = await user.countDocuments({
+    loginType: { $regex: /^admin$/i },
+  });
 
-    // ---- 1️⃣ Count Users ----
-    const [totalUsers, totalRoleUsers, totalAdmins, totalTAT] = await Promise.all([
-      UserModel.countDocuments({}),
-      RoleUserModel.countDocuments({}),
-      UserModel.countDocuments({ loginType: { $regex: /^admin$/i } }),
-      IpdConcernModel.countDocuments({ status: { $in: ["Resolved", "resolved"] } }),
-    ]);
+  // ---- 2️⃣ Count Resolved Concerns (TAT) ----
+  const totalTAT = await roleUser.countDocuments({
+    status: { $in: ["Resolved", "resolved"] },
+  });
 
-    return {
-      totalUsers,
-      totalRoleUsers,
-      totalAdmins,
-      totalTAT,
-    };
-  } catch (error) {
-    console.error("❌ getExtraStats failed:", error.message);
-    return {
-      totalUsers: 0,
-      totalRoleUsers: 0,
-      totalAdmins: 0,
-      totalTAT: 0,
-    };
-  }
+  return {
+    totalUsers,
+    totalRoleUsers,
+    totalAdmins,
+    totalTAT, // ✅ total resolved concerns
+  };
 }
 
 async function getDashboard({ from, to, modules = [], loginType }) {
@@ -1452,106 +1337,105 @@ const escalateConcern = async (concernId, { level, note, userId }) => {
   };
 };
 
+// Calculate final complaint status based ONLY on active departments
+function calculateComplaintStatus(complaint) {
+  const modules = complaint.modules; // All mapped departments
 
-const resolveConcern = async (
+  // Active = has text or attachments
+  const activeModules = modules.filter((m) => {
+    const sec = complaint[m];
+    if (!sec) return false;
+    const hasText = sec.text?.trim()?.length > 0;
+    const hasFiles = Array.isArray(sec.attachments) && sec.attachments.length > 0;
+    return hasText || hasFiles;
+  });
+
+  if (activeModules.length === 0) return "partial"; // no valid department
+
+  // Check if ALL are resolved or admin resolved
+  const allResolved = activeModules.every((m) => {
+    const sec = complaint[m];
+    return (
+      sec.status === "resolved" ||
+      sec.status === "resolved_by_admin"
+    );
+  });
+
+  return allResolved ? "resolved" : "partial";
+}
+
+
+async function resolveConcern(
   complaintId,
-  { department, actionType, note = "", proof = [], userId }
-) => {
+  { department, actionType = "resolved", note = "", proof = null, userId }
+) {
   const ComplaintModel = getModel("GIRIRAJIPDConcern");
-  const UserModel = getModel("GIRIRAJUser");
 
-  // 1️⃣ Fetch complaint
+  // ⭐ Fix: Convert null proof → []
+  if (!Array.isArray(proof)) proof = [];
+
   const complaint = await ComplaintModel.findById(complaintId);
   if (!complaint) throw new Error("Complaint not found");
 
-  if (!department || !complaint[department]) {
-    throw new Error("Invalid department or no complaint registered for this department");
+  // ⭐ Fix: If department is array → take first
+  if (Array.isArray(department)) {
+    department = department[0];
+  }
+
+  // ⭐ Fix: Auto-select department if only 1 department exists
+  if (!department) {
+    if (Array.isArray(complaint.modules) && complaint.modules.length === 1) {
+      department = complaint.modules[0];
+    } else {
+      throw new Error("Department is required");
+    }
+  }
+
+  // ⭐ Fix: Backend should NOT crash even if department key missing — create it
+  if (!complaint[department]) {
+    complaint[department] = {
+      text: "",
+      attachments: [],
+      status: "open",
+      actionType: "",
+      actionNote: "",
+      resolution: null,
+      forward: null,
+      progress: null,
+      escalation: null
+    };
   }
 
   const section = complaint[department];
+  if (!section) throw new Error(`Invalid department: ${department}`);
 
-  // 2️⃣ Set RCA / CA / PA
-  section.actionType = actionType;
+  // ⭐ RESOLUTION UPDATE
+  section.status = "resolved";
+  section.actionType = actionType || "resolved";  // always available
   section.actionNote = note;
 
-  // 3️⃣ Update resolution
   section.resolution = {
     note,
     proof,
     resolvedBy: userId,
     resolvedAt: new Date(),
-    resolvedType: "staff",
+    resolvedType: "staff"
   };
 
-  // 4️⃣ Mark this department resolved
-  section.status = "resolved";
-
-  // 5️⃣ Update full complaint status
-  const modules = complaint.modules;
-
-  const resolvedCount = modules.filter(
-    (m) => complaint[m]?.status === "resolved"
-  ).length;
-
-  complaint.status =
-    resolvedCount === modules.length ? "resolved" : "partial";
+  // ⭐ Update main complaint status
+  complaint.status = calculateComplaintStatus(complaint);
 
   await complaint.save();
-
-  // 6️⃣ Notify Admin & Department Users
-  const admins = await UserModel.find({ role: "admin" })
-    .select("deviceToken")
-    .lean();
-
-  const deptUsers = await UserModel.find({
-    role: "user",
-    department,
-  })
-    .select("deviceToken")
-    .lean();
-
-  const tokens = [
-    ...admins.map((u) => u.deviceToken),
-    ...deptUsers.map((u) => u.deviceToken),
-  ].filter(Boolean);
-
-  if (tokens.length > 0) {
-    await sendNotification({
-      tokens,
-      title: `Complaint Resolved (${department})`,
-      body: `${department} team has resolved their part of the complaint.`,
-      data: {
-        complaintId: String(complaint._id),
-        department,
-        type: "COMPLAINT_RESOLVED",
-      },
-    });
-  }
-
-  // 7️⃣ WhatsApp notification (optional)
-  if (complaint.contactNo) {
-    try {
-      await sendResolveMessage({
-        phoneNumber: complaint.contactNo,
-        employeeName: complaint.employeeName,
-        department,
-      });
-    } catch (err) {
-      console.error("WhatsApp failed:", err.message);
-    }
-  }
 
   return {
     success: true,
     message:
       complaint.status === "resolved"
         ? "Complaint fully resolved."
-        : `Department ${department} resolved. Complaint is partially open.`,
-    complaint,
+        : `Department ${department} resolved. Complaint partially open.`,
+    complaint
   };
-};
-
-
+}
 
 
 function hasValidData(deptData) {
@@ -1559,7 +1443,7 @@ function hasValidData(deptData) {
 
   const obj = deptData.toObject ? deptData.toObject() : deptData;
 
-  const hasText = obj.text && obj.text.trim() !== "";
+    const hasText = obj.text && obj.text.trim() !== "";
   const hasAttachments = Array.isArray(obj.attachments) && obj.attachments.length > 0;
 
   return hasText || hasAttachments;
@@ -2159,47 +2043,26 @@ async function getServiceWiseSummary() {
 }
 
 async function getFrequentRatingKeywords(limit = 6) {
-  try {
-    const IPDModel = getModel("GIRIRAJIPDPatients");
-    if (!IPDModel) throw new Error("GIRIRAJIPDPatients model not found");
+  const IPDModel = getModel("GIRIRAJIPDPatients");
+  const patients = await IPDModel.find({}, { ratings: 1 }).lean();
 
-    // Fetch only ratings
-    const patients = await IPDModel.find({}, { ratings: 1 }).lean();
+  const counts = {};
 
-    const counts = {};
-    const RATING_LABELS = {
-      doctorServices: "Doctor Services",
-      billingServices: "Billing Services",
-      housekeeping: "Housekeeping",
-      maintenance: "Maintenance",
-      diagnosticServices: "Diagnostic Services",
-      dietitianServices: "Dietitian",
-      security: "Security",
-      nursing: "Nursing",
-    };
+  patients.forEach((p) => {
+    if (!p.ratings) return;
+    Object.entries(p.ratings).forEach(([field, value]) => {
+      if (!value) return; // skip if no rating
+      const label = RATING_LABELS[field] || field;
+      counts[label] = (counts[label] || 0) + 1;
+    });
+  });
 
-    for (const p of patients) {
-      if (!p.ratings) continue;
-      for (const [field, value] of Object.entries(p.ratings)) {
-        if (!value) continue;
-        const label = RATING_LABELS[field] || field;
-        counts[label] = (counts[label] || 0) + 1;
-      }
-    }
-
-    // Sort by frequency and return top N
-    const sorted = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
-      .map(([label, count]) => ({ label, count }));
-
-    console.log("✅ Frequent Rating Keywords:", sorted);
-    return sorted;
-  } catch (error) {
-    console.error("❌ Error fetching frequent ratings:", error.message);
-    return [];
-  }
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1]) // sort by frequency
+    .slice(0, limit)             // only top N
+    .map(([label]) => label);    // return labels only
 }
+
 
 const getFrequentOPDRatings = async () => {
   // All rating keys in schema
@@ -2216,9 +2079,10 @@ const getFrequentOPDRatings = async () => {
   // Initialize counts
   const counts = {};
   ratingKeys.forEach((k) => (counts[k] = 0));
+  const OPDModel = getModel("GIRIRAJOpd")
 
   // Fetch all OPD feedback
-  const feedbacks = await girirajModels?.GIRIRAJOpd.find({}, { ratings: 1 }).lean();
+  const feedbacks = await OPDModel.find({}, { ratings: 1 }).lean();
 
   feedbacks.forEach((fb) => {
     if (!fb.ratings) return;
@@ -2249,42 +2113,43 @@ const getFrequentOPDRatings = async () => {
   return keywords;
 };
 
-
-
-const partialResolveConcern = async (
+async function partialResolveConcern(
   complaintId,
   { department, note = "", proof = [], userId }
-) => {
+) {
   const ComplaintModel = getModel("GIRIRAJIPDConcern");
 
-  // 1️⃣ Fetch complaint
   const complaint = await ComplaintModel.findById(complaintId);
   if (!complaint) throw new Error("Complaint not found");
 
-  if (!department || !complaint[department]) {
-    throw new Error(`Department '${department}' does not exist in this complaint`);
+  // ⭐ FIX — If department missing or array, auto-detect correct department
+  if (!department || Array.isArray(department)) {
+    if (Array.isArray(department)) department = department[0];
+
+    // If only ONE department exists → auto assign
+    if (!department && complaint.modules?.length === 1) {
+      department = complaint.modules[0];
+    }
+  }
+
+  if (!department) {
+    throw new Error("Department is required and could not be auto-detected");
   }
 
   const section = complaint[department];
+  if (!section) throw new Error(`Invalid department: ${department}`);
 
-  // 2️⃣ Staff resolves this department
   section.status = "resolved";
   section.resolution = {
     note,
     proof,
     resolvedBy: userId,
     resolvedAt: new Date(),
-    resolvedType: "staff",
+    resolvedType: "staff"
   };
 
-  // 3️⃣ Update overall status
-  const allModules = complaint.modules;
-  const resolvedCount = allModules.filter(
-    (m) => complaint[m]?.status === "resolved"
-  ).length;
-
-  complaint.status =
-    resolvedCount === allModules.length ? "resolved" : "partial";
+  // ⭐ Recalculate overall complaint status
+  complaint.status = calculateComplaintStatus(complaint);
 
   await complaint.save();
 
@@ -2292,16 +2157,12 @@ const partialResolveConcern = async (
     success: true,
     message:
       complaint.status === "resolved"
-        ? "All departments resolved. Complaint fully closed."
-        : `Department ${department} resolved. Complaint remains partially open.`,
-    data: {
-      _id: complaint._id,
-      status: complaint.status,
-      department,
-      note,
-    },
+        ? "All departments resolved."
+        : `Department ${department} resolved. Complaint partially open.`,
+    complaint
   };
-};
+}
+
 
 
 
@@ -2411,7 +2272,8 @@ const partialEscalateConcern = async (concernId, { department, note, level, user
 };
 
 const getPartialResolveDetails = async (concernId) => {
-  const concern = await girirajModels?.GIRIRAJIPDConcern.findById(concernId).lean()
+  const IPDModel = getModel("GIRIRAJIPDConcern");
+  const concern = await IPDModel.findById(concernId).lean()
     .populate("resolution.resolvedBy", "name")
     .lean();
 
@@ -2618,7 +2480,7 @@ const forwardInternalComplaint = async (
 
   complaint[department] = { ...data, status: "forwarded" };
 
-  complaint.forwards.push({
+  complaint.forwards?.push({
     toDepartment: department,
     note: data.note || "",
     forwardedBy: userId || null,
@@ -3187,11 +3049,10 @@ const getPartialResolveInternalDetails = async (complaintId) => {
  */
 async function updateAdminAction(id, actionType, data, adminId) {
   const ComplaintModel = getModel("GIRIRAJIPDConcern");
-
   const complaint = await ComplaintModel.findById(id);
   if (!complaint) throw new Error("Complaint not found");
 
-  const {
+  let {
     note = "",
     proof = [],
     department,
@@ -3206,11 +3067,21 @@ async function updateAdminAction(id, actionType, data, adminId) {
     throw new Error(`Invalid action type: ${actionType}`);
   }
 
-  if (isPartial && !department) {
-    throw new Error("Department is required for partial admin update");
+  // ⭐ FIX — auto-detect department if missing
+  if (isPartial) {
+    if (!department || Array.isArray(department)) {
+      if (Array.isArray(department)) department = department[0];
+      if (!department && complaint.modules?.length === 1) {
+        department = complaint.modules[0];
+      }
+    }
+
+    if (!department) {
+      throw new Error("Department is required for partial action");
+    }
   }
 
-  // Save admin metadata
+  // ---- LOG ADMIN ACTION ----
   complaint.adminActions = complaint.adminActions || {};
   complaint.adminActions[actionType] = {
     note,
@@ -3223,7 +3094,6 @@ async function updateAdminAction(id, actionType, data, adminId) {
     at: new Date()
   };
 
-  // Add audit history
   complaint.history = complaint.history || [];
   complaint.history.push({
     action: actionType,
@@ -3235,7 +3105,7 @@ async function updateAdminAction(id, actionType, data, adminId) {
     affectedDepartments: isPartial ? [department] : []
   });
 
-  // Helper for modifying department section
+  // ==== UPDATE ONE DEPARTMENT ====
   const updateDept = (deptKey) => {
     const sec = complaint[deptKey];
     if (!sec) return;
@@ -3243,128 +3113,116 @@ async function updateAdminAction(id, actionType, data, adminId) {
     sec.updatedByAdmin = true;
     sec.adminNote = note;
 
-    switch (actionType) {
-      case "resolved":
-        sec.status = "resolved_by_admin";
-        sec.resolution = {
-          actionType: actionTypeForDept,
-          actionNote: note,
-          proof,
-          resolvedBy: adminId,
-          resolvedAt: new Date(),
-          resolvedType: "admin",
-        };
-        break;
+    if (actionType === "resolved") {
+      sec.status = "resolved_by_admin";
+      sec.resolution = {
+        actionType: actionTypeForDept,
+        actionNote: note,
+        proof,
+        resolvedBy: adminId,
+        resolvedAt: new Date(),
+        resolvedType: "admin"
+      };
+    }
 
-      case "forwarded":
-        sec.status = "forwarded";
-        sec.forward = {
-          note,
-          toDepartment,
-          forwardedBy: adminId,
-          forwardedAt: new Date(),
-        };
-        break;
+    if (actionType === "forwarded") {
+      sec.status = "forwarded";
+      sec.forward = {
+        note,
+        toDepartment,
+        forwardedBy: adminId,
+        forwardedAt: new Date()
+      };
+    }
 
-      case "escalated":
-        sec.status = "escalated";
-        sec.escalation = {
-          note,
-          level,
-          escalatedBy: adminId,
-          escalatedAt: new Date(),
-        };
-        break;
+    if (actionType === "escalated") {
+      sec.status = "escalated";
+      sec.escalation = {
+        note,
+        level,
+        escalatedBy: adminId,
+        escalatedAt: new Date()
+      };
+    }
 
-      case "progress":
-        sec.status = "in_progress";
-        sec.progress = {
-          note,
-          updatedBy: adminId,
-          updatedAt: new Date(),
-        };
-        break;
+    if (actionType === "progress") {
+      sec.status = "in_progress";
+      sec.progress = {
+        note,
+        updatedBy: adminId,
+        updatedAt: new Date()
+      };
     }
   };
 
-  const modules = complaint.modules;
-
-  // PARTIAL ADMIN ACTION
+  // === PARTIAL ===
   if (isPartial) {
     updateDept(department);
-    complaint.status = "partial";
   }
 
-  // FULL ADMIN ACTION
+  // === FULL ===
   else {
-    modules.forEach((dept) => {
-      const section = complaint[dept];
-      const hasText = section?.text?.trim()?.length > 0;
-      const hasFiles = Array.isArray(section?.attachments) && section.attachments.length > 0;
+    complaint.modules.forEach((dept) => {
+      const sec = complaint[dept];
+      if (!sec) return;
+
+      const hasText = sec.text?.trim()?.length > 0;
+      const hasFiles = Array.isArray(sec.attachments) && sec.attachments.length > 0;
+
       if (hasText || hasFiles) updateDept(dept);
     });
-
-    if (actionType === "resolved") {
-      complaint.status = "resolved_by_admin";
-    } else {
-      complaint.status = actionType;
-    }
   }
+
+  // ⭐ Recalculate overall complaint status
+  complaint.status = calculateComplaintStatus(complaint);
 
   complaint.updatedAt = new Date();
   await complaint.save();
 
-  // Normalize status
-  if (complaint.status === "resolved_by_admin") {
-    complaint.status = "resolved";
-  }
-
   return {
     success: true,
     message: `Admin ${actionType} action completed successfully`,
-    complaint,
+    complaint
   };
 }
 
-const partialAdminResolveConcern = async (
+async function partialAdminResolveConcern(
   complaintId,
   { department, note = "", proof = [], userId, actionTypeForDept = null }
-) => {
+) {
   const ComplaintModel = getModel("GIRIRAJIPDConcern");
-
   const complaint = await ComplaintModel.findById(complaintId);
   if (!complaint) throw new Error("Complaint not found");
 
-  if (!department) throw new Error("Department is required");
+  // ⭐ FIX — Auto-detect department
+  if (!department || Array.isArray(department)) {
+    if (Array.isArray(department)) department = department[0];
 
-  if (!complaint[department]) {
-    throw new Error(`Department '${department}' does not exist in this complaint`);
+    if (!department && complaint.modules?.length === 1) {
+      department = complaint.modules[0];
+    }
+  }
+
+  if (!department) {
+    throw new Error("Department is required and could not be detected");
   }
 
   const section = complaint[department];
+  if (!section) throw new Error(`Department invalid: ${department}`);
 
   section.status = "resolved_by_admin";
-  section.resolvedByAdmin = true;
   section.updatedByAdmin = true;
-
   section.resolution = {
     actionType: actionTypeForDept,
     actionNote: note,
     proof,
     resolvedBy: userId,
     resolvedAt: new Date(),
-    resolvedType: "admin",
+    resolvedType: "admin"
   };
 
-  // Check if all modules are resolved_by_admin
-  const allModules = complaint.modules;
-
-  const resolvedCount = allModules.filter(
-    (mod) => complaint[mod]?.status === "resolved_by_admin"
-  ).length;
-
-  complaint.status =
-    resolvedCount === allModules.length ? "resolved_by_admin" : "partial";
+  // ⭐ Status update
+  complaint.status = calculateComplaintStatus(complaint);
 
   complaint.history = complaint.history || [];
   complaint.history.push({
@@ -3375,7 +3233,7 @@ const partialAdminResolveConcern = async (
     actionType: actionTypeForDept,
     by: userId,
     at: new Date(),
-    isPartial: complaint.status !== "resolved_by_admin",
+    isPartial: complaint.status !== "resolved"
   });
 
   await complaint.save();
@@ -3383,17 +3241,12 @@ const partialAdminResolveConcern = async (
   return {
     success: true,
     message:
-      complaint.status === "resolved_by_admin"
-        ? "All departments resolved by admin. Complaint fully closed."
-        : `Department ${department} resolved by admin. Complaint remains partially open.`,
-    data: {
-      _id: complaint._id,
-      status: complaint.status,
-      department,
-      note,
-    },
+      complaint.status === "resolved"
+        ? "Complaint fully resolved by admin."
+        : `Department ${department} resolved by admin. Complaint partially open.`,
+    complaint
   };
-};
+}
 
 
 /* --------------------- PARTIAL IN-PROGRESS --------------------- */
