@@ -73,4 +73,48 @@ const createIPDPatient = catchAsync(async (req, res) => {
   });
 });
 
-export default { createIPDPatient, createComplaint, createOPDPatient, createIPDConcern, createOPDConcern, getDoctors, createInternalComplaint,}
+const createEmployeeFeedback = catchAsync(async (req, res) => {
+  const io = req.app.get("io");
+
+  // 🧹 Clean invalid rating values (remove 0 or undefined)
+  if (req.body?.ratings) {
+    req.body.ratings = Object.fromEntries(
+      Object.entries(req.body.ratings).filter(([_, v]) => v >= 1 && v <= 5)
+    );
+  }
+
+  // ✅ Proceed to create feedback
+  const feedback = await userService.createEmployeeFeedback(req.body, io);
+  console.log("✅ Employee feedback saved:", feedback._id);
+
+  res.status(httpStatus.CREATED).json({
+    success: true,
+    message: "Employee feedback submitted successfully",
+    data: feedback,
+  });
+});
+
+const createConsultantFeedback = catchAsync(async (req, res) => {
+  const io = req.app.get("io");
+
+  // 🧹 Clean invalid rating values (remove 0 or undefined)
+  if (req.body?.ratings) {
+    req.body.ratings = Object.fromEntries(
+      Object.entries(req.body.ratings).filter(([_, v]) => v >= 1 && v <= 5)
+    );
+  }
+
+  // ✅ Proceed to create feedback
+  const feedback = await userService.createConsultantFeedback(req.body, io);
+  console.log("✅ Consultant feedback saved:", feedback._id);
+
+  res.status(httpStatus.CREATED).json({
+    success: true,
+    message: "Consultant feedback submitted successfully",
+    data: feedback,
+  });
+});
+
+export default { createIPDPatient, createComplaint, createOPDPatient, createIPDConcern, createOPDConcern, getDoctors, createInternalComplaint,
+  createEmployeeFeedback, createConsultantFeedback, 
+}

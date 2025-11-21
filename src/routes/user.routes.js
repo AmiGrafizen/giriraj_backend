@@ -16,6 +16,10 @@ router.post('/opd-patient', userController.createOPDPatient);
 
 router.post('/opd-concern', userController.createOPDConcern);
 
+router.post('/employee-feedback', userController.createEmployeeFeedback);
+
+router.post('/consultant-feedback', userController.createConsultantFeedback);
+
 router.get('/doctors', userController.getDoctors);
 
 export default router;

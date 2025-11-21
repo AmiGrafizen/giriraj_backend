@@ -1,13 +1,18 @@
 import mongoose from "mongoose";
 
+/* ============================================================
+   ⭐ CONCERN ITEM SCHEMA (FOR EACH DEPARTMENT)
+   Matches Your UI: RCA / CA / PA, Action Note, Proof Upload, Status
+============================================================ */
 const ConcernItemSchema = new mongoose.Schema(
   {
     topic: { type: String },
+
     mode: { type: String, enum: ["text", "image", "voice"], default: "text" },
     text: { type: String },
     attachments: [{ type: String }],
 
-    // ✅ Track per-department status
+    // ⭐ Department status
     status: {
       type: String,
       enum: [
@@ -22,18 +27,23 @@ const ConcernItemSchema = new mongoose.Schema(
       trim: true,
     },
 
-    resolvedByAdmin: { type: Boolean, default: false }, // 👈 NEW
-    updatedByAdmin: { type: Boolean, default: false },  // 👈 NEW
-    adminNote: { type: String },                        // 👈 NEW (optional comment)
+    // ⭐ Admin indicators
+    resolvedByAdmin: { type: Boolean, default: false },
+    updatedByAdmin: { type: Boolean, default: false },
+    adminNote: { type: String },
 
-    // ✅ Progress details for in-progress state (per department)
+    /* ----------------------------------------------------------
+       ⭐ PROGRESS
+    ----------------------------------------------------------- */
     progress: {
       note: { type: String },
       updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
       updatedAt: { type: Date, default: Date.now },
     },
 
-    // ✅ Forward details (per department)
+    /* ----------------------------------------------------------
+       ⭐ FORWARD
+    ----------------------------------------------------------- */
     forward: {
       toDepartment: { type: String },
       note: { type: String },
@@ -41,7 +51,9 @@ const ConcernItemSchema = new mongoose.Schema(
       forwardedAt: { type: Date },
     },
 
-    // ✅ Escalation details (per department)
+    /* ----------------------------------------------------------
+       ⭐ ESCALATION
+    ----------------------------------------------------------- */
     escalation: {
       level: {
         type: String,
@@ -53,19 +65,33 @@ const ConcernItemSchema = new mongoose.Schema(
       toUser: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
     },
 
-    // ✅ Resolution details (per department)
+    /* ----------------------------------------------------------
+       ⭐ RESOLUTION — Updated as per your UI
+       RCA / CA / PA + Note + Proof + Resolved Type
+    ----------------------------------------------------------- */
     resolution: {
-      note: { type: String },
+      actionType: {
+        type: String,
+        enum: ["RCA", "CA", "PA"],
+        default: null,
+      },
+      actionNote: { type: String },
       proof: [{ type: String }],
       resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
       resolvedAt: { type: Date },
+      resolvedType: {
+        type: String,
+        enum: ["admin", "staff"],
+        default: "staff",
+      },
     },
   },
   { _id: false }
 );
 
-
-
+/* ============================================================
+   ⭐ SUPPORTING SUB-SCHEMAS
+============================================================ */
 const EscalationSchema = new mongoose.Schema(
   {
     level: {
@@ -109,6 +135,9 @@ const ProgressSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/* ============================================================
+   ⭐ COUNTER FOR COMPLAINT ID (A00001 → A00002 → ... )
+============================================================ */
 const CounterSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
   seq: { type: Number, default: 0 },
@@ -118,13 +147,17 @@ const CounterSchema = new mongoose.Schema({
 const Counter =
   mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
 
+/* ============================================================
+   ⭐ MAIN IPD CONCERN SCHEMA
+============================================================ */
 const IPDConcernSchema = new mongoose.Schema(
   {
     patientName: { type: String, required: true },
     complaintId: { type: String, unique: true },
-    contact: { type: String, alias: "contactNo" },
+    contact: { type: String },
     bedNo: { type: String },
     language: { type: String },
+
     consultantDoctorName: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "GIRIRAJDoctor",
@@ -136,7 +169,9 @@ const IPDConcernSchema = new mongoose.Schema(
       default: "Normal",
     },
 
-    // ✅ Each department section (same structure)
+    /* ----------------------------------------------------------
+       ⭐ ALL DEPARTMENTS
+    ----------------------------------------------------------- */
     doctorServices: { type: ConcernItemSchema, default: undefined },
     billingServices: { type: ConcernItemSchema, default: undefined },
     housekeeping: { type: ConcernItemSchema, default: undefined },
@@ -148,17 +183,12 @@ const IPDConcernSchema = new mongoose.Schema(
 
     comments: { type: String },
 
-    // ✅ Overall concern status (with partial added)
+    /* ----------------------------------------------------------
+       ⭐ OVERALL COMPLAINT STATUS
+    ----------------------------------------------------------- */
     status: {
       type: String,
-      enum: [
-        "open",
-        "in_progress",
-        "forwarded",
-        "resolved",
-        "escalated",
-        "partial",
-      ],
+      enum: ["open", "in_progress", "forwarded", "resolved", "escalated", "partial"],
       default: "open",
       lowercase: true,
       trim: true,
@@ -174,15 +204,17 @@ const IPDConcernSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-
+/* ============================================================
+   ⭐ VIRTUAL LIST OF ACTIVE MODULES
+============================================================ */
 IPDConcernSchema.virtual("modules").get(function () {
   const modules = [];
-  if (this.doctorServices) modules.push("doctor_service");
-  if (this.billingServices) modules.push("billing_service");
+  if (this.doctorServices) modules.push("doctorServices");
+  if (this.billingServices) modules.push("billingServices");
   if (this.housekeeping) modules.push("housekeeping");
   if (this.maintenance) modules.push("maintenance");
-  if (this.diagnosticServices) modules.push("diagnostic_service");
-  if (this.dietitianServices) modules.push("dietetics");
+  if (this.diagnosticServices) modules.push("diagnosticServices");
+  if (this.dietitianServices) modules.push("dietitianServices");
   if (this.security) modules.push("security");
   if (this.nursing) modules.push("nursing");
   return modules;
@@ -191,6 +223,9 @@ IPDConcernSchema.virtual("modules").get(function () {
 IPDConcernSchema.set("toJSON", { virtuals: true });
 IPDConcernSchema.set("toObject", { virtuals: true });
 
+/* ============================================================
+   ⭐ AUTO-GENERATE complaintId
+============================================================ */
 IPDConcernSchema.pre("save", async function (next) {
   if (this.complaintId) return next();
 
@@ -212,7 +247,7 @@ IPDConcernSchema.pre("save", async function (next) {
   next();
 });
 
-
+/* ============================================================ */
 IPDConcernSchema.index({ complaintId: 1 }, { unique: true });
 IPDConcernSchema.index({ patientName: 1 });
 IPDConcernSchema.index({ status: 1 });

@@ -58,6 +58,8 @@ const NotificationSetting = () => getModel("notificationsetting");
 const InternalComplaint = () => getModel("internalcomplaint");
 const Doctor = () => getModel("doctor");
 const Complaint = () => getModel("complaint");
+const EmployeeFeedback = () => getModel("girirajemployeefeedback");
+const ConsultantFeedback = () => getModel("girirajconsultantfeedback");
 
 
 const createComplaint = async (data) => {
@@ -269,5 +271,137 @@ const getDoctors = async () => {
   return await Doctor()?.find().sort({ createdAt: -1 });
 };
 
-export default {createComplaint, createIPDPatient, createOPDPatient, createIPDConcern, createOPDConcern, getUserByEmail, getDoctors, createInternalComplaint,
+const createEmployeeFeedback = async (payload, io) => {
+  try {
+    // 1️⃣ Create employee feedback record
+    const feedback = await EmployeeFeedback()?.create({
+      employeeName: payload.employeeName,
+      employeeId: payload.employeeId,
+      ratings: {
+        jobSatisfaction: payload.ratings?.jobSatisfaction,
+        feelingValued: payload.ratings?.feelingValued,
+        growthOpportunities: payload.ratings?.growthOpportunities,
+        trainingSupport: payload.ratings?.trainingSupport,
+        welfareFacility: payload.ratings?.welfareFacility,
+        trainingNeeded: payload.ratings?.trainingNeeded,
+        challengesSupportNeeded: payload.ratings?.challengesSupportNeeded,
+        suggestions: payload.ratings?.suggestions,
+      },
+      comments: {
+        trainingNeeded: payload.comments?.trainingNeeded,
+        challengesSupportNeeded: payload.comments?.challengesSupportNeeded,
+        suggestions: payload.comments?.suggestions,
+      },
+      overallRecommendation: payload.overallRecommendation,
+    });
+
+    if (!feedback) throw new Error("Failed to create employee feedback");
+
+    // 2️⃣ Populate after creation
+    const populatedFeedback = await EmployeeFeedback()?.findById(feedback._id).lean();
+
+    // 3️⃣ Emit real-time socket event (if enabled)
+    if (io) {
+      io.emit("employeeFeedback:new", {
+        employeeName: populatedFeedback.employeeName,
+        employeeId: populatedFeedback.employeeId,
+        overallRecommendation: populatedFeedback.overallRecommendation,
+        createdAt: populatedFeedback.createdAt,
+      });
+      console.log("📡 Employee feedback socket emitted");
+    }
+
+    // 4️⃣ Save a system notification
+    await girirajModels.GIRIRAJNotification.create({
+      title: "Employee Feedback Received",
+      body: `New feedback from ${populatedFeedback.employeeName} (${populatedFeedback.employeeId}).`,
+      data: {
+        employeeName: populatedFeedback.employeeName,
+        employeeId: populatedFeedback.employeeId,
+        overallRecommendation: populatedFeedback.overallRecommendation,
+      },
+      department: "HR",
+      showInStackBar: true,
+      status: "sent",
+    });
+
+    return populatedFeedback;
+  } catch (err) {
+    console.error("❌ createEmployeeFeedback error:", err);
+    throw err;
+  }
+};
+
+const createConsultantFeedback = async (payload, io) => {
+  try {
+    // 1️⃣ Create consultant feedback record
+    const feedback = await ConsultantFeedback()?.create({
+      language: payload.language,
+      doctorName: payload.doctorName,
+
+      serviceRatings: payload.serviceRatings?.map(item => ({
+        label: item.label,
+        rating: item.rating,
+        comment: item.comment,
+      })),
+
+      bdRatings: payload.bdRatings?.map(item => ({
+        label: item.label,
+        rating: item.rating,
+        comment: item.comment,
+      })),
+
+      managementFeedback: payload.managementFeedback?.map(item => ({
+        label: item.label,
+        rating: item.rating,
+        comment: item.comment,
+      })),
+
+      finalComments: payload.finalComments,
+
+      ipAddress: payload.ipAddress || null,
+      deviceInfo: payload.deviceInfo || null,
+    });
+
+    if (!feedback) throw new Error("Failed to create consultant feedback");
+
+    // 2️⃣ Populate after creation
+    const populatedFeedback = await ConsultantFeedback()
+      .findById(feedback._id)
+      .lean();
+
+    // 3️⃣ Emit real-time socket event (if enabled)
+    if (io) {
+      io.emit("consultantFeedback:new", {
+        doctorName: populatedFeedback.doctorName,
+        language: populatedFeedback.language,
+        createdAt: populatedFeedback.createdAt,
+      });
+
+      console.log("Consultant feedback socket emitted");
+    }
+
+    // 4️⃣ Save system notification
+    await girirajModels.GIRIRAJNotification.create({
+      title: "Consultant Feedback Received",
+      body: `New feedback submitted by Dr. ${populatedFeedback.doctorName}.`,
+      data: {
+        doctorName: populatedFeedback.doctorName,
+        language: populatedFeedback.language,
+      },
+      department: "Management",
+      showInStackBar: true,
+      status: "sent",
+    });
+
+    return populatedFeedback;
+
+  } catch (err) {
+    console.error("createConsultantFeedback error:", err);
+    throw err;
+  }
+};
+
+export default {createComplaint, createIPDPatient, createOPDPatient, createIPDConcern, createOPDConcern, getUserByEmail, getDoctors, createInternalComplaint, createEmployeeFeedback,
+  createConsultantFeedback,
 };

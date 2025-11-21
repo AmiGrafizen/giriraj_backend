@@ -3764,7 +3764,7 @@ const updateNotificationSettingsService = async (userId, userModel, payload) => 
   const Model = getModel("GIRIRAJNotificationSetting");
 
   if (!Model || typeof Model.findOneAndUpdate !== "function") {
-    throw new Error("❌ GIRIRAJNotificationSetting model not found or invalid");
+    throw new Error("GIRIRAJNotificationSetting model not found or invalid");
   }
 
   const updated = await Model.findOneAndUpdate(
@@ -3781,6 +3781,279 @@ const updateNotificationSettingsService = async (userId, userModel, payload) => 
 
   return updated;
 };
+
+const getEmployeeFeedback = async (page = 1, limit = 50) => {
+  const [feedbacks, total] = await Promise.all([
+    girirajModels.GIRIRAJEmployeeFeedback.find()
+      .select(
+        "employeeName employeeId mobileNumber floor ratings comments overallRecommendation createdAt"
+      )
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    girirajModels.GIRIRAJEmployeeFeedback.countDocuments(),
+  ]);
+
+  return {
+    feedbacks,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  };
+};
+
+// 🔹 Get single feedback by ID
+const getEmployeeFeedbackById = async (id) => {
+  const feedback = await girirajModels.GIRIRAJEmployeeFeedback.findById(id)
+    .select(
+      "employeeName employeeId mobileNumber floor ratings comments overallRecommendation createdAt updatedAt"
+    )
+    .lean();
+
+  return feedback || null;
+};
+
+
+// 🔹 Delete feedback
+const deleteEmployeeFeedback = async (id) => {
+  return await girirajModels.GIRIRAJEmployeeFeedback.findByIdAndDelete(id);
+};
+
+// 🔹 Update feedback
+const updateEmployeeFeedback = async (id, update) => {
+  const feedback = await girirajModels.GIRIRAJEmployeeFeedback.findByIdAndUpdate(
+    id,
+    update,
+    { new: true }
+  );
+  if (!feedback) throw new ApiError(404, "Feedback not found");
+  return feedback;
+};
+
+// 🔹 Group by Rating
+const getEmployeeFeedbackByRating = async () => {
+  const feedbacks = await girirajModels.GIRIRAJEmployeeFeedback.find().lean();
+  const grouped = {};
+
+  for (const fb of feedbacks) {
+    const avg =
+      fb.ratings && Object.values(fb.ratings).length
+        ? Math.round(
+            Object.values(fb.ratings).reduce((a, b) => a + b, 0) /
+              Object.values(fb.ratings).length
+          )
+        : 0;
+
+    const label =
+      avg >= 5
+        ? "Excellent"
+        : avg >= 4
+        ? "Good"
+        : avg >= 3
+        ? "Average"
+        : avg >= 2
+        ? "Poor"
+        : "Very Poor";
+
+    if (!grouped[label]) grouped[label] = [];
+    grouped[label].push({
+      employeeName: fb.employeeName,
+      employeeId: fb.employeeId,
+      mobileNumber: fb.mobileNumber,
+      floor: fb.floor,
+      averageRating: avg,
+      overallRecommendation: fb.overallRecommendation,
+      suggestions: fb.suggestions,
+      date: fb.createdAt,
+    });
+  }
+
+  return grouped;
+};
+
+const getFrequentEmployeeRatings = async () => {
+  // ⭐ All rating keys based on EmployeeFeedbackSchema
+  const ratingKeys = [
+    "jobSatisfaction",
+    "feelingValued",
+    "growthOpportunities",
+    "trainingSupport",
+    "welfareFacility",
+    "trainingNeeded",
+    "challengesSupportNeeded",
+    "suggestions",
+  ];
+
+  // Initialize counts for each field
+  const counts = {};
+  ratingKeys.forEach((k) => (counts[k] = 0));
+
+  // 🧠 Fetch all Employee Feedback documents
+  const feedbacks = await girirajModels?.GIRIRAJEmployeeFeedback.find({}, { ratings: 1 }).lean();
+
+  // Count frequency of ratings used
+  feedbacks.forEach((fb) => {
+    if (!fb.ratings) return;
+    for (const key of ratingKeys) {
+      const val = fb.ratings[key];
+      if (typeof val === "number" && val >= 1 && val <= 5) {
+        counts[key] += 1;
+      }
+    }
+  });
+
+  // Sort descending by usage
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  // Convert key -> human-readable label
+  const prettyKey = (k) =>
+    k
+      .replace(/([A-Z])/g, " $1")
+      .replace(/_/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^./, (c) => c.toUpperCase());
+
+  // Final keyword list
+  const keywords = sorted
+    .filter(([, count]) => count > 0)
+    .map(([key]) => prettyKey(key));
+
+  return keywords;
+};
+
+const getConsultantFeedback = async (page = 1, limit = 50) => {
+  const [feedbacks, total] = await Promise.all([
+    girirajModels.GIRIRAJConsultantFeedback.find()
+      .select(
+        "doctorName language serviceRatings bdRatings managementFeedback finalComments createdAt"
+      )
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+
+    girirajModels.GIRIRAJConsultantFeedback.countDocuments(),
+  ]);
+
+  return {
+    feedbacks,
+    total,
+    page,
+    pages: Math.ceil(total / limit),
+  };
+};
+
+const getConsultantFeedbackById = async (id) => {
+  const feedback = await girirajModels.GIRIRAJConsultantFeedback.findById(id)
+    .select(
+      "doctorName language serviceRatings bdRatings managementFeedback finalComments ipAddress deviceInfo createdAt updatedAt"
+    )
+    .lean();
+
+  return feedback || null;
+};
+
+const deleteConsultantFeedback = async (id) => {
+  return await girirajModels.GIRIRAJConsultantFeedback.findByIdAndDelete(id);
+};
+
+const updateConsultantFeedback = async (id, update) => {
+  const feedback = await girirajModels.GIRIRAJConsultantFeedback.findByIdAndUpdate(
+    id,
+    update,
+    { new: true }
+  );
+
+  if (!feedback) throw new ApiError(404, "Consultant Feedback not found");
+
+  return feedback;
+};
+
+const getConsultantFeedbackByRating = async () => {
+  const feedbacks = await girirajModels.GIRIRAJConsultantFeedback.find().lean();
+  const grouped = {};
+
+  for (const fb of feedbacks) {
+    const allRatings = [
+      ...(fb.serviceRatings || []),
+      ...(fb.bdRatings || []),
+      ...(fb.managementFeedback || []),
+    ]
+      .map((x) => x.rating)
+      .filter((n) => typeof n === "number");
+
+    const avg =
+      allRatings.length > 0
+        ? Math.round(allRatings.reduce((a, b) => a + b, 0) / allRatings.length)
+        : 0;
+
+    const label =
+      avg >= 5
+        ? "Excellent"
+        : avg >= 4
+        ? "Good"
+        : avg >= 3
+        ? "Average"
+        : avg >= 2
+        ? "Poor"
+        : "Very Poor";
+
+    if (!grouped[label]) grouped[label] = [];
+
+    grouped[label].push({
+      doctorName: fb.doctorName,
+      averageRating: avg,
+      comments: fb.finalComments,
+      date: fb.createdAt,
+    });
+  }
+
+  return grouped;
+};
+
+const getFrequentConsultantRatings = async () => {
+  const RATING_SECTIONS = ["serviceRatings", "bdRatings", "managementFeedback"];
+
+  const counts = {};
+
+  // Fetch consultant feedbacks (only rating sections)
+  const feedbacks = await girirajModels.GIRIRAJConsultantFeedback.find(
+    {},
+    { serviceRatings: 1, bdRatings: 1, managementFeedback: 1 }
+  ).lean();
+
+  for (const fb of feedbacks) {
+    for (const section of RATING_SECTIONS) {
+      const items = fb[section];
+      if (!Array.isArray(items)) continue;
+
+      for (const item of items) {
+        if (!item.label) continue;
+
+        // init counter
+        if (!counts[item.label]) counts[item.label] = 0;
+
+        // count only if valid rating
+        if (typeof item.rating === "number" && item.rating >= 1 && item.rating <= 5) {
+          counts[item.label] += 1;
+        }
+      }
+    }
+  }
+
+  // Sort labels by highest filled rating
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  // Final keywords (labels only)
+  const keywords = sorted
+    .filter(([, count]) => count > 0)
+    .map(([label]) => label);
+
+  return { keywords };
+};
+
 
 export default {
   createIPDPatient, getIPDPatientById, getIPDPatients, deleteIPDPatientById, updateIPDPatientById, createComplaint, getComplaintById, updateComplaint, getAllComplaints,
