@@ -23,14 +23,20 @@ const DEPT_LABELS = {
 };
 
 const DEPT_LABEL = {
-  doctorServices: "Doctor",
-  billingServices: "Billing",
-  housekeeping: "Housekeeping",
   maintenance: "Maintenance",
-  diagnosticServices: "Diagnostic",
-  dietitianServices: "Dietitian",
-  security: "Security",
+  itDepartment: "IT Department",
+  bioMedicalDepartment: "Bio Medical Department",
   nursing: "Nursing",
+  medicalAdmin: "Medical Admin",
+  frontDesk: "Front Desk",
+  housekeeping: "Housekeeping",
+  dietitian: "Dietitian",
+  pharmacy: "Pharmacy",
+  security: "Security",
+  hr: "HR",
+  icn: "ICN",
+  mrd: "MRD",
+  accounts: "Accounts",
 };
 
 const SERVICE_LABELS = {
@@ -95,6 +101,11 @@ const CONCERN_KEYS = [
   "security",
   "nursing",
 ];
+
+const formatDepartment = (key = "") => {
+  return DEPT_LABEL[key] || key.charAt(0).toUpperCase() + key.slice(1);
+};
+
 
 function getModel(modelName) {
   if (!girirajModels || typeof girirajModels !== "object") {
@@ -1502,7 +1513,7 @@ const getConcernHistory = async (concernId) => {
       forwardedDepartments.push(fwd.toDepartment);
       history.push({
         type: "forwarded",
-        label: `Complaint Forwarded to ${fwd.toDepartment}`,
+        label: `Complaint Forwarded to ${formatDepartment(fwd.toDepartment)}`,
         note: fwd.note || fwd.text || "",
         by: fwd.forwardedBy || null,
         at: fwd.forwardedAt || concern.updatedAt,
@@ -1515,7 +1526,7 @@ const getConcernHistory = async (concernId) => {
     concern.escalations.forEach((esc) => {
       history.push({
         type: "escalated",
-        label: `Complaint Escalated to ${esc.level || "Higher Authority"}`,
+        label: `Complaint Escalated to ${formatDepartment(esc.level) || "Higher Authority"}`,
         note: esc.note || esc.text || "",
         level: esc.level || null,
         by: esc.escalatedBy || null,
@@ -1537,15 +1548,17 @@ const getConcernHistory = async (concernId) => {
 
   // 6️⃣ Global Resolution
   if (concern.resolution && (concern.resolution.note || concern.resolution.text)) {
+    const isAdmin = concern.status === "resolved_by_admin";
+
     history.push({
       type: "resolved",
-      label: "Complaint Resolved",
+      label: isAdmin ? "Complaint Resolved By Admin" : "Complaint Resolved",
       note: concern.resolution.note || concern.resolution.text || "",
       proof: concern.resolution.proof || [],
       by: concern.resolution.resolvedBy || null,
       at: concern.resolution.resolvedAt || concern.updatedAt,
     });
-  }
+  } 
 
   // -------------------------------------------------
   // 7️⃣ Department-level (Partial) events
@@ -1606,19 +1619,21 @@ const getConcernHistory = async (concernId) => {
       });
     }
 
-
-    // 🟢 Partial Resolved
-    if (block.status === "resolved") {
-      history.push({
-        type: "resolved",
-        label: `Department (${dept}) Resolved`,
-        note: baseNote,
-        proof: block.resolution?.proof || [],
-        by: block.resolution?.resolvedBy || null,
-        at: block.resolution?.resolvedAt || concern.updatedAt,
-        department: dept,
-      });
-    }
+    // 🟢 Partial Resolved (Normal + Admin)
+if (block.status === "resolved" || block.status === "resolved_by_admin") {
+  history.push({
+    type: "resolved",
+    label:
+      block.status === "resolved_by_admin"
+        ? `Department (${formatDepartment(dept)}) Resolved By Admin`
+        : `Department (${formatDepartment(dept)}) Resolved`,
+    note: baseNote,
+    proof: block.resolution?.proof || [],
+    by: block.resolution?.resolvedBy || null,
+    at: block.resolution?.resolvedAt || concern.updatedAt,
+    department: dept,
+  });
+}
 
     // 🟣 Partial Forwarded
     if (block.status === "forwarded") {
@@ -2621,52 +2636,114 @@ const escalateInternalComplaint = async (complaintId, { level, note, userId }) =
 /* --------------------------------------------
    🔹 RESOLVE INTERNAL COMPLAINT
 ---------------------------------------------*/
-const resolveInternalComplaint = async (
+async function resolveInternalComplaint(
   complaintId,
-  { note, proof, userId }
-) => {
+  { department, note = "", proof = [], userId, actionType = "resolved" }
+) {
   const InternalComplaint = getModel("GIRIRAJInternalComplaint");
-  const complaint = await InternalComplaint.findById(
-    complaintId
-  );
+
+  // ⭐ Normalize proof
+  if (!Array.isArray(proof)) proof = [];
+
+  const complaint = await InternalComplaint.findById(complaintId);
   if (!complaint) throw new Error("Complaint not found");
 
-  complaint.resolution = {
+  // ⭐ If department is array → pick first
+  if (Array.isArray(department)) {
+    department = department[0];
+  }
+
+  // ⭐ Auto-select department if only one exists
+  const activeDepts = Object.keys(complaint._doc).filter((key) => {
+    const d = complaint[key];
+    return (
+      d &&
+      typeof d === "object" &&
+      (d.text?.trim?.() ||
+        (Array.isArray(d.attachments) && d.attachments.length > 0))
+    );
+  });
+
+  if (!department) {
+    if (activeDepts.length === 1) {
+      department = activeDepts[0];
+    } else {
+      throw new Error("Department is required");
+    }
+  }
+
+  // ⭐ Create department schema if missing to avoid crashes
+  if (!complaint[department]) {
+    complaint[department] = {
+      text: "",
+      attachments: [],
+      status: "open",
+      actionType: "",
+      actionNote: "",
+      resolution: null,
+      progress: null,
+      escalation: null,
+      forward: null,
+    };
+  }
+
+  const section = complaint[department];
+  if (!section) throw new Error(`Invalid department: ${department}`);
+
+  // ⭐ Mark department as resolved
+  section.status = "resolved";
+  section.actionType = actionType || "resolved";
+  section.actionNote = note;
+
+  section.resolution = {
     note,
     proof,
     resolvedBy: userId,
     resolvedAt: new Date(),
+    resolvedType: "staff",
   };
-  complaint.status = "resolved";
+
+  // ⭐ Update main complaint status based on all departments
+  complaint.status = calculateComplaintStatus(complaint);
+
   await complaint.save();
 
-  // 🔔 Notify HR/Admin
-  const user = getModel("GIRIRAJRoleUser");
-  const hrUsers = await user.find({
-    $or: [{ department: "HR" }, { departments: { $in: ["HR"] } }],
-  })
-    .populate({ path: "user", select: "fcmTokens" })
-    .lean();
+  // ⭐ Send notification to HR/Admin if fully resolved
+  if (complaint.status === "resolved") {
+    const RoleUser = getModel("GIRIRAJRoleUser");
+    const hrUsers = await RoleUser.find({
+      $or: [{ department: "HR" }, { departments: { $in: ["HR"] } }],
+    })
+      .populate({ path: "user", select: "fcmTokens" })
+      .lean();
 
-  const tokens = [];
-  for (const u of hrUsers) {
-    if (u?.user?.fcmTokens) tokens.push(...u.user.fcmTokens);
+    const tokens = [];
+    for (const u of hrUsers) {
+      if (u?.user?.fcmTokens) tokens.push(...u.user.fcmTokens);
+    }
+
+    if (tokens.length > 0) {
+      await sendNotification({
+        tokens,
+        title: "Internal Complaint Resolved",
+        body: `Complaint raised by ${complaint.employeeName} has been fully resolved.`,
+        data: {
+          complaintId: complaint._id.toString(),
+          type: "INTERNAL_COMPLAINT_RESOLVED",
+        },
+      });
+    }
   }
 
-  if (tokens.length > 0) {
-    await sendNotification({
-      tokens,
-      title: "Internal Complaint Resolved",
-      body: `Complaint raised by ${complaint.employeeName} has been resolved.`,
-      data: {
-        complaintId: complaint._id.toString(),
-        type: "INTERNAL_COMPLAINT_RESOLVED",
-      },
-    });
-  }
-
-  return complaint;
-};
+  return {
+    success: true,
+    message:
+      complaint.status === "resolved"
+        ? "Complaint fully resolved."
+        : `Department ${department} resolved. Complaint partially open.`,
+    complaint,
+  };
+}
 
 /* --------------------------------------------
    🔹 IN-PROGRESS UPDATE
@@ -2711,8 +2788,8 @@ const updateInternalProgress = async (
    🔹 GET HISTORY TIMELINE
 ---------------------------------------------*/
 const getInternalComplaintHistory = async (concernId) => {
-  // 1️⃣ Fetch concern with full populated references
   const InternalComplaint = getModel("GIRIRAJInternalComplaint");
+
   const concernDoc = await InternalComplaint.findById(concernId)
     .populate("escalations.escalatedBy", "name email")
     .populate("resolution.resolvedBy", "name email")
@@ -2725,7 +2802,9 @@ const getInternalComplaintHistory = async (concernId) => {
   const history = [];
   const forwardedDepartments = [];
 
-  // 2️⃣ Complaint Created
+  /* -------------------------------------------
+     1️⃣ Complaint Created
+  -------------------------------------------- */
   history.push({
     type: "created",
     label: "Complaint Created",
@@ -2737,13 +2816,16 @@ const getInternalComplaintHistory = async (concernId) => {
     },
   });
 
-  // 3️⃣ Global Forwards
+  /* -------------------------------------------
+     2️⃣ Global Forwards
+  -------------------------------------------- */
   if (Array.isArray(concern.forwards) && concern.forwards.length > 0) {
     concern.forwards.forEach((fwd) => {
       forwardedDepartments.push(fwd.toDepartment);
+
       history.push({
         type: "forwarded",
-        label: `Complaint Forwarded to ${fwd.toDepartment}`,
+        label: `Complaint Forwarded to ${formatDepartment(fwd.toDepartment)}`,
         note: fwd.note || fwd.text || "",
         by: fwd.forwardedBy || null,
         at: fwd.forwardedAt || concern.updatedAt,
@@ -2751,12 +2833,14 @@ const getInternalComplaintHistory = async (concernId) => {
     });
   }
 
-  // 4️⃣ Global Escalations
+  /* -------------------------------------------
+     3️⃣ Global Escalations
+  -------------------------------------------- */
   if (Array.isArray(concern.escalations) && concern.escalations.length > 0) {
     concern.escalations.forEach((esc) => {
       history.push({
         type: "escalated",
-        label: `Complaint Escalated to ${esc.level || "Higher Authority"}`,
+        label: `Complaint Escalated to ${formatDepartment(esc.level) || "Higher Authority"}`,
         note: esc.note || esc.text || "",
         level: esc.level || null,
         by: esc.escalatedBy || null,
@@ -2765,7 +2849,9 @@ const getInternalComplaintHistory = async (concernId) => {
     });
   }
 
-  // 5️⃣ Global In-Progress
+  /* -------------------------------------------
+     4️⃣ Global In-Progress
+  -------------------------------------------- */
   if (concern.progress && (concern.progress.note || concern.progress.text)) {
     history.push({
       type: "in_progress",
@@ -2776,11 +2862,15 @@ const getInternalComplaintHistory = async (concernId) => {
     });
   }
 
-  // 6️⃣ Global Resolution
+  /* -------------------------------------------
+     5️⃣ Global Resolution (Resolved + Admin)
+  -------------------------------------------- */
   if (concern.resolution && (concern.resolution.note || concern.resolution.text)) {
+    const isAdmin = concern.status === "resolved_by_admin";
+
     history.push({
       type: "resolved",
-      label: "Complaint Resolved",
+      label: isAdmin ? "Complaint Resolved By Admin" : "Complaint Resolved",
       note: concern.resolution.note || concern.resolution.text || "",
       proof: concern.resolution.proof || [],
       by: concern.resolution.resolvedBy || null,
@@ -2788,9 +2878,12 @@ const getInternalComplaintHistory = async (concernId) => {
     });
   }
 
+  /* -------------------------------------------
+     6️⃣ Department Level Tracking
+  -------------------------------------------- */
+  const DEPT_KEYS = INTERNAL_DEPT_KEYS; // already defined in your system
 
-
-  for (const dept of INTERNAL_DEPT_KEYS) {
+  for (const dept of DEPT_KEYS) {
     const block = concern[dept];
     if (!block) continue;
 
@@ -2802,11 +2895,11 @@ const getInternalComplaintHistory = async (concernId) => {
       block.text ||
       "";
 
-    // 🟡 Partial In-Progress
+    /* 🔸 Partial In-Progress */
     if (block.status === "in_progress") {
       history.push({
         type: "in_progress",
-        label: `Department (${dept}) marked In-Progress`,
+        label: `Department (${formatDepartment(dept)}) marked In-Progress`,
         note: baseNote,
         by: block.progress?.updatedBy || null,
         at: block.progress?.updatedAt || concern.updatedAt,
@@ -2814,20 +2907,12 @@ const getInternalComplaintHistory = async (concernId) => {
       });
     }
 
-    // 🔴 Partial Escalated
+    /* 🔸 Partial Escalated */
     if (block.status === "escalated") {
-      const escalateNote =
-        block.escalation?.note ||
-        block.escalation?.text ||
-        block.note ||
-        block.text ||
-        "";
-
       history.push({
         type: "escalated",
-        label: `Department (${dept}) Escalated${block.escalation?.level ? ` to ${block.escalation.level}` : ""
-          }`,
-        note: escalateNote, // ✅ display the real note written during escalation
+        label: `Department (${formatDepartment(dept)}) Escalated${block.escalation?.level ? ` to ${block.escalation.level}` : ""}`,
+        note: block.escalation?.note || block.note || block.text || "",
         level: block.escalation?.level || null,
         by: block.escalation?.escalatedBy || null,
         at: block.escalation?.escalatedAt || concern.updatedAt,
@@ -2835,12 +2920,15 @@ const getInternalComplaintHistory = async (concernId) => {
       });
     }
 
+    /* 🔸 Partial Resolved + Resolved_By_Admin */
+    if (block.status === "resolved" || block.status === "resolved_by_admin") {
+      const isAdmin = block.status === "resolved_by_admin";
 
-    // 🟢 Partial Resolved
-    if (block.status === "resolved") {
       history.push({
         type: "resolved",
-        label: `Department (${dept}) Resolved`,
+        label: isAdmin
+          ? `Department (${formatDepartment(dept)}) Resolved By Admin`
+          : `Department (${formatDepartment(dept)}) Resolved`,
         note: baseNote,
         proof: block.resolution?.proof || [],
         by: block.resolution?.resolvedBy || null,
@@ -2849,11 +2937,11 @@ const getInternalComplaintHistory = async (concernId) => {
       });
     }
 
-    // 🟣 Partial Forwarded
+    /* 🔸 Partial Forward */
     if (block.status === "forwarded") {
       history.push({
         type: "forwarded",
-        label: `Department (${dept}) Forwarded`,
+        label: `Department (${formatDepartment(dept)}) Forwarded`,
         note: baseNote,
         by: block.forwardedBy || null,
         at: block.forwardedAt || concern.updatedAt,
@@ -2862,22 +2950,20 @@ const getInternalComplaintHistory = async (concernId) => {
     }
   }
 
-  // -------------------------------------------------
-  // 8️⃣ Sort all history chronologically
-  // -------------------------------------------------
+  /* -------------------------------------------
+     7️⃣ Sort by Date
+  -------------------------------------------- */
   const timeline = history.sort(
     (a, b) => new Date(a.at || a.createdAt) - new Date(b.at || b.createdAt)
   );
 
-  // -------------------------------------------------
-  // 9️⃣ Return formatted response
-  // -------------------------------------------------
   return {
     concernId: concern._id,
     forwardedDepartments,
     timeline,
   };
 };
+
 
 const partialInProgressInternal = async (
   complaintId,
