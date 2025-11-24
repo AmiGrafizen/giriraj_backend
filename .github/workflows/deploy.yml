@@ -41,7 +41,7 @@ jobs:
         with:
           host: ${{ secrets.FTP_HOST }}
           username: backe59
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
           server-dir: /domains/backend.feedbacks.live/public_html/
           local-dir: ./      # or ./build/ or ./dist/ depending on your project
