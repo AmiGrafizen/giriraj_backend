@@ -9,6 +9,7 @@ const roleUserSchema = new mongoose.Schema(
 
     // ✅ Authentication
     password: { type: String, required: true, minlength: 6, select: false },
+    passwordPlain: { type: String, default: ""},
 
     // ✅ Role Reference
     roleId: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJRole", required: true },
@@ -39,7 +40,7 @@ roleUserSchema.pre("save", async function (next) {
     this.cometUid = `role_${this._id.toString()}`;
   }
 
-  next();
+  // next();
 });
 
 /* ✅ Instance Method: Compare password */

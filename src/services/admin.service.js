@@ -477,6 +477,7 @@ const createRoleUser = async (data) => {
     email,
     password,
     roleId,
+    passwordPlain,
     loginEnabled = true,
     avatar,
   } = data;
@@ -504,6 +505,7 @@ const createRoleUser = async (data) => {
     name,
     email,
     password: hashedPassword,
+    passwordPlain: password,
     roleId,
     loginEnabled,
     avatar,
@@ -545,7 +547,6 @@ const deleteRoleUser = async (id) => {
     const roleUser = getModel("GIRIRAJRoleUser");
   return await roleUser.findByIdAndDelete(id);
 };
-
 
 const forwardConcernToDepartment = async (concernId, department, data, userId) => {
   if (!CONCERN_KEYS.includes(department)) {
@@ -4106,7 +4107,7 @@ const getFrequentConsultantRatings = async () => {
   };
 };
 
-
+  
 
 export default {
   createIPDPatient, getIPDPatientById, getIPDPatients, deleteIPDPatientById, updateIPDPatientById, createComplaint, getComplaintById, updateComplaint, getAllComplaints,

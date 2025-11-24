@@ -193,7 +193,7 @@ const createIPDConcern = async (payload, io) => {
   const formatDeptLabel = (key = "") =>
     key
       .replace(/([A-Z])/g, " $1")
-      .replace(/services?/i, " Services")
+      .replace(/services?/i, "Services")
       .replace(/\b\w/g, (c) => c.toUpperCase())
       .trim();
 
