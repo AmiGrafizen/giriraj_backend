@@ -203,10 +203,24 @@ const getRoleUserById = catchAsync(async (req, res) => {
   res.status(httpStatus.OK).send({ roleUser });
 });
 
-const updateRoleUser = catchAsync(async (req, res) => {
-  const roleUser = await adminService.updateRoleUser(req.params.id, req.body);
-  res.status(httpStatus.OK).send({ roleUser });
-});
+const updateRoleUser = async (req, res) => {
+  try {
+    const updatedUser = await adminService.updateRoleUser(req.params.id, req.body);
+
+    return res.json({
+      success: true,
+      user: updatedUser,
+      forceLogout: updatedUser.forceLogout === true
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
 
 const deleteRoleUser = catchAsync(async (req, res) => {
   const roleUser = await adminService.deleteRoleUser(req.params.id);

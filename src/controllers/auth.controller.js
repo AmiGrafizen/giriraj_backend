@@ -175,47 +175,33 @@ const updatePaymentStatus = async (req, res) => {
 
 const loginRoleUserController = async (req, res) => {
   try {
-    const { identifier, password } = req.body;
-    if (!identifier || !password) {
-      return res.status(400).json({ message: "Email/Username and password are required." });
-    }
+    const { identifier, email, username, password } = req.body;
 
-    const user = await authService.findUserByIdentifierService(identifier);
+    const id = identifier || email || username;
+
+    const user = await authService.findUserByIdentifierService(id);
     if (!user) return res.status(404).json({ message: "User not found." });
 
-    const ok = await authService.validatePasswordService(password, user, girirajModels);
-    if (!ok) return res.status(401).json({ message: "Invalid password." });
-
-    user.password = undefined; // don't return password
-    const token = authService.generateTokenService(user);
-
-    // --------------------------------------------------------------------
-    // 🧠 COMETCHAT INTEGRATION (auto-create user + generate token)
-    // --------------------------------------------------------------------
-    let cometToken = null;
-    try {
-      const uid = `roleuser_${user._id}`; // unique CometChat UID for role users
-      const name = user.name || user.email;
-
-      // ✅ Ensure the user exists in CometChat
-      await ensureCometUser(uid, name, user.avatar || "");
-
-      // ✅ Generate an auth token for this user
-      cometToken = await generateCometAuthToken(uid);
-      console.log("CometChat token generated for:", uid);
-    } catch (err) {
-      console.error("CometChat integration failed:", err.message);
+    // 🔥 NEW LOGIC — Block login if disabled
+    if (!user.loginEnabled) {
+      return res.status(403).json({
+        success: false,
+        message: "Your login access has been disabled by the admin.",
+      });
     }
 
-    // ✅ Return everything to the frontend
+    const ok = await authService.validatePasswordService(password, user);
+    if (!ok) return res.status(401).json({ message: "Invalid password." });
+
+    const token = authService.generateTokenService(user);
+
     return res.status(200).json({
       message: "Login successful",
       token,
-      user,
-      cometToken, // 👈 added
+      user
     });
+
   } catch (err) {
-    console.error("Login Error:", err);
     return res.status(500).json({
       message: "Internal server error",
       error: err.message,

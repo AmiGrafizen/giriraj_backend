@@ -477,19 +477,18 @@ const createRoleUser = async (data) => {
     email,
     password,
     roleId,
-    passwordPlain,
     loginEnabled = true,
     avatar,
   } = data;
 
+const roleUser = getModel("GIRIRAJRoleUser");
+const roles = getModel("GIRIRAJRole");
+
   if (!name || !email || !password || !roleId) {
     throw new Error("Name, email, password, and roleId are required.");
   }
-    const roleModel = getModel("GIRIRAJRole");
-    const roleUser = getModel("GIRIRAJRoleUser");
 
-
-  const role = await roleModel.findById(roleId).lean();
+  const role = await roles.findById(roleId).lean();
   if (!role) {
     throw new Error("Invalid roleId. Role not found.");
   }
@@ -505,7 +504,7 @@ const createRoleUser = async (data) => {
     name,
     email,
     password: hashedPassword,
-    passwordPlain: password,
+    passwordPlain: password,  // ⭐ Save original password
     roleId,
     loginEnabled,
     avatar,
@@ -539,8 +538,47 @@ const getRoleUserById = async (id) => {
 };
 
 const updateRoleUser = async (id, data) => {
-    const roleUser = getModel("GIRIRAJRoleUser");
-  return await roleUser.findByIdAndUpdate(id, data, { new: true });
+  const roleUser = getModel("GIRIRAJRoleUser");
+  // ---------------------------------------------------
+  // 1️⃣ If password updated → hash + store plain (same as your logic)
+  // ---------------------------------------------------
+  if (data.password) {
+    const plain = data.password;
+
+    data.password = await bcrypt.hash(plain, 10);  // hash for DB
+    data.passwordPlain = plain;                    // store plain text
+  }
+
+  // ---------------------------------------------------
+  // 2️⃣ Update user
+  // ---------------------------------------------------
+  const updatedUser = await roleUser.findByIdAndUpdate(
+    id,
+    data,
+    { new: true }
+  ).lean();
+
+  if (!updatedUser) {
+    throw new Error("User not found.");
+  }
+
+  // ---------------------------------------------------
+  // 3️⃣ LOGIN DISABLED → Force logout response
+  // ---------------------------------------------------
+  if (data.loginEnabled === false) {
+    return {
+      ...updatedUser,
+      forceLogout: true, // 🔥 instruct frontend to logout the user
+    };
+  }
+
+  // ---------------------------------------------------
+  // 4️⃣ NORMAL UPDATE RESPONSE
+  // ---------------------------------------------------
+  return {
+    ...updatedUser,
+    forceLogout: false,
+  };
 };
 
 const deleteRoleUser = async (id) => {
@@ -4106,8 +4144,6 @@ const getFrequentConsultantRatings = async () => {
     keywords: sorted.filter((i) => i[1] > 0).map(([label]) => label),
   };
 };
-
-  
 
 export default {
   createIPDPatient, getIPDPatientById, getIPDPatients, deleteIPDPatientById, updateIPDPatientById, createComplaint, getComplaintById, updateComplaint, getAllComplaints,
