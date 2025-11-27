@@ -1,214 +1,236 @@
-  import mongoose from "mongoose";
+import mongoose from "mongoose";
 
-  /* ---------------------- ConcernItemSchema ---------------------- */
-  const ConcernItemSchema = new mongoose.Schema(
-    {
-      topic: { type: String },
-      mode: { type: String, enum: ["text", "image", "voice"], default: "text" },
-      text: { type: String },
-      attachments: [{ type: String }],
+/* ============================================================
+   ⭐ CONCERN ITEM SCHEMA (FOR EACH DEPARTMENT)
+============================================================ */
+const ConcernItemSchema = new mongoose.Schema(
+  {
+    topic: { type: String },
 
-      // ✅ Track per-department status
-      status: {
-        type: String,
-        enum: [
-          "open",
-          "in_progress",
-          "forwarded",
-          "resolved",
-          "escalated",
-          "resolved_by_admin", // ✅ NEW
-        ],
-        default: "open",
-        lowercase: true,
-        trim: true,
-      },
+    mode: { type: String, enum: ["text", "image", "voice"], default: "text" },
+    text: { type: String },
+    attachments: [{ type: String }],
 
-      // ✅ Progress details
-      progress: {
-        note: { type: String },
-        updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-        updatedAt: { type: Date, default: Date.now },
-      },
-
-      // ✅ Forward details
-      forward: {
-        toDepartment: { type: String },
-        note: { type: String },
-        forwardedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-        forwardedAt: { type: Date },
-      },
-
-      // ✅ Escalation details
-      escalation: {
-        level: {
-          type: String,
-          enum: ["PGRO", "CEO", "Board of Directors", "Medical Director"],
-        },
-        note: { type: String },
-        escalatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-        escalatedAt: { type: Date },
-        toUser: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-      },
-
-      // ✅ Resolution details
-      resolution: {
-        note: { type: String },
-        proof: [{ type: String }],
-        resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-        resolvedAt: { type: Date },
-        resolvedType: { type: String, enum: ["admin", "staff"], default: "staff" }, // ✅ NEW
-      },
+    status: {
+      type: String,
+      enum: [
+        "open",
+        "in_progress",
+        "forwarded",
+        "resolved",
+        "escalated",
+        "resolved_by_admin",
+      ],
+      default: "open",
     },
-    { _id: false }
-  );
 
-  /* ---------------------- Sub-schemas ---------------------- */
-  const EscalationSchema = new mongoose.Schema(
-    {
-      level: {
-        type: String,
-        enum: ["PGRO", "CEO", "Board of Directors", "Medical Director"],
-        required: true,
-      },
-      note: { type: String, required: true },
-      escalatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-      escalatedAt: { type: Date, default: Date.now },
-    },
-    { _id: false }
-  );
+    resolvedByAdmin: { type: Boolean, default: false },
+    updatedByAdmin: { type: Boolean, default: false },
+    adminNote: { type: String },
 
-  const ResolutionSchema = new mongoose.Schema(
-    {
-      note: { type: String, required: true },
-      proof: [{ type: String }],
-      resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-      resolvedAt: { type: Date, default: Date.now },
-    },
-    { _id: false }
-  );
-
-  const ForwardSchema = new mongoose.Schema(
-    {
-      toDepartment: { type: String, required: true },
+    progress: {
       note: { type: String },
-      forwardedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
-      forwardedAt: { type: Date, default: Date.now },
-    },
-    { _id: false }
-  );
-
-  const ProgressSchema = new mongoose.Schema(
-    {
-      note: { type: String, required: true },
       updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
       updatedAt: { type: Date, default: Date.now },
     },
-    { _id: false }
-  );
 
-  /* ---------------------- Counter Schema ---------------------- */
-  const CounterSchema = new mongoose.Schema({
-    name: { type: String, required: true, unique: true },
-    seq: { type: Number, default: 0 },
-    seriesChar: { type: String, default: "A" },
-  });
-  const Counter = mongoose.models.Counter || mongoose.model("Counter", CounterSchema);
-
-  /* ---------------------- Internal Complaint Schema ---------------------- */
-  const InternalComplaintSchema = new mongoose.Schema(
-    {
-      employeeName: { type: String, required: true },
-      employeeId: { type: String, required: true },
-      contactNo: { type: String },
-      floorNo: { type: String },
-      complaintId: { type: String, unique: true },
-
-      maintenance: { type: ConcernItemSchema, default: undefined },
-      itDepartment: { type: ConcernItemSchema, default: undefined },
-      bioMedicalDepartment: { type: ConcernItemSchema, default: undefined },
-      nursing: { type: ConcernItemSchema, default: undefined },
-      medicalAdmin: { type: ConcernItemSchema, default: undefined },
-      frontDesk: { type: ConcernItemSchema, default: undefined },
-      housekeeping: { type: ConcernItemSchema, default: undefined },
-      dietitian: { type: ConcernItemSchema, default: undefined },
-      pharmacy: { type: ConcernItemSchema, default: undefined },
-      security: { type: ConcernItemSchema, default: undefined },
-      hr: { type: ConcernItemSchema, default: undefined },
-      icn: { type: ConcernItemSchema, default: undefined },
-      mrd: { type: ConcernItemSchema, default: undefined },
-      accounts: { type: ConcernItemSchema, default: undefined },
-
-      comments: { type: String },
-
-      status: {
-        type: String,
-        enum: [
-          "open",
-          "in_progress",
-          "forwarded",
-          "resolved",
-          "escalated",
-          "partial",
-          "resolved_by_admin", // ✅ Added
-        ],
-        default: "open",
-        lowercase: true,
-        trim: true,
-      },
-
+    forward: {
+      toDepartment: { type: String },
       note: { type: String },
-      progress: ProgressSchema,
-      resolution: ResolutionSchema,
-      escalations: [EscalationSchema],
-      forwards: [ForwardSchema],
+      forwardedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+      forwardedAt: { type: Date },
     },
-    { timestamps: true }
-  );
 
-  InternalComplaintSchema.virtual("modules").get(function () {
-    const modules = [];
-    if (this.maintenance) modules.push("maintenance");
-    if (this.itDepartment) modules.push("it_department");
-    if (this.bioMedicalDepartment) modules.push("bio_medical");
-    if (this.nursing) modules.push("nursing");
-    if (this.medicalAdmin) modules.push("medical_admin");
-    if (this.frontDesk) modules.push("front_desk");
-    if (this.housekeeping) modules.push("housekeeping");
-    if (this.dietitian) modules.push("dietitian");
-    if (this.pharmacy) modules.push("pharmacy");
-    if (this.security) modules.push("security");
-    if (this.hr) modules.push("hr");
-    if (this.icn) modules.push("icn");
-    if (this.mrd) modules.push("mrd");
-    if (this.accounts) modules.push("accounts");
-    return modules;
-  });
+    escalation: {
+      level: {
+        type: String,
+        enum: ["PGRO", "CEO", "Board of Directors", "Medical Director"],
+      },
+      note: { type: String },
+      escalatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+      escalatedAt: { type: Date },
+      toUser: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+    },
 
-  InternalComplaintSchema.set("toJSON", { virtuals: true });
-  InternalComplaintSchema.set("toObject", { virtuals: true });
+    resolution: {
+      actionType: { type: String, enum: ["RCA", "CA", "PA"], default: null },
+      actionNote: { type: String },
+      proof: [{ type: String }],
+      resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+      resolvedAt: { type: Date },
+      resolvedType: { type: String, enum: ["admin", "staff"], default: "staff" },
+    },
+  },
+  { _id: false }
+);
 
-  InternalComplaintSchema.pre("save", async function (next) {
-    if (this.complaintId) return next();
-    const counter = await Counter.findOneAndUpdate(
-      { name: "internalComplaintId" },
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true }
-    );
+/* ============================================================
+   ⭐ SUB-SCHEMAS
+============================================================ */
+const EscalationSchema = new mongoose.Schema(
+  {
+    level: {
+      type: String,
+      enum: ["PGRO", "CEO", "Board of Directors", "Medical Director"],
+      required: true,
+    },
+    note: { type: String, required: true },
+    escalatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+    escalatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
-    let { seq, seriesChar } = counter;
+const ForwardSchema = new mongoose.Schema(
+  {
+    toDepartment: { type: String },
+    note: { type: String },
+    forwardedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+    forwardedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+const ProgressSchema = new mongoose.Schema(
+  {
+    note: { type: String },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+const ResolutionSchema = new mongoose.Schema(
+  {
+    note: { type: String },
+    proof: [{ type: String }],
+    resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
+    resolvedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+/* ============================================================
+   ⭐ MAIN INTERNAL COMPLAINT SCHEMA
+============================================================ */
+const InternalComplaintSchema = new mongoose.Schema(
+  {
+    employeeName: { type: String, required: true },
+    employeeId: { type: String, required: true },
+
+    complaintId: { type: String, unique: true },
+
+    contactNo: { type: String },
+    floorNo: { type: String },
+
+    // ⭐ Departments
+    maintenance: { type: ConcernItemSchema },
+    itDepartment: { type: ConcernItemSchema },
+    bioMedicalDepartment: { type: ConcernItemSchema },
+    nursing: { type: ConcernItemSchema },
+    medicalAdmin: { type: ConcernItemSchema },
+    frontDesk: { type: ConcernItemSchema },
+    housekeeping: { type: ConcernItemSchema },
+    dietitian: { type: ConcernItemSchema },
+    pharmacy: { type: ConcernItemSchema },
+    security: { type: ConcernItemSchema },
+    hr: { type: ConcernItemSchema },
+    icn: { type: ConcernItemSchema },
+    mrd: { type: ConcernItemSchema },
+    accounts: { type: ConcernItemSchema },
+
+    comments: { type: String },
+
+    status: {
+      type: String,
+      enum: [
+        "open",
+        "in_progress",
+        "forwarded",
+        "resolved",
+        "escalated",
+        "partial",
+        "resolved_by_admin",
+      ],
+      default: "open",
+      lowercase: true,
+    },
+
+    note: { type: String },
+
+    progress: ProgressSchema,
+    resolution: ResolutionSchema,
+    escalations: [EscalationSchema],
+    forwards: [ForwardSchema],
+  },
+  { timestamps: true }
+);
+
+/* ============================================================
+   ⭐ VIRTUAL: MODULE LIST
+============================================================ */
+InternalComplaintSchema.virtual("modules").get(function () {
+  const departments = [
+    "maintenance",
+    "itDepartment",
+    "bioMedicalDepartment",
+    "nursing",
+    "medicalAdmin",
+    "frontDesk",
+    "housekeeping",
+    "dietitian",
+    "pharmacy",
+    "security",
+    "hr",
+    "icn",
+    "mrd",
+    "accounts",
+  ];
+  return departments.filter((d) => !!this[d]);
+});
+
+InternalComplaintSchema.set("toJSON", { virtuals: true });
+InternalComplaintSchema.set("toObject", { virtuals: true });
+
+/* ============================================================
+   ⭐ AUTO-GENERATE complaintId (NO COUNTER MODEL)
+============================================================ */
+InternalComplaintSchema.pre("save", async function (next) {
+  if (this.complaintId) return next();
+
+  try {
+    const Model = this.constructor;
+
+    // Get last complaint
+    const last = await Model.findOne({ complaintId: { $exists: true } })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    let seriesChar = "A";
+    let seq = 0;
+
+    if (last?.complaintId) {
+      seriesChar = last.complaintId.charAt(0);
+      seq = parseInt(last.complaintId.slice(1));
+    }
+
+    seq++;
+
     if (seq > 99999) {
       seq = 1;
       seriesChar = String.fromCharCode(seriesChar.charCodeAt(0) + 1);
-      await Counter.updateOne({ name: "internalComplaintId" }, { seq, seriesChar });
     }
 
-    this.complaintId = `${seriesChar}${seq.toString().padStart(5, "0")}`;
+    this.complaintId = `${seriesChar}${String(seq).padStart(5, "0")}`;
+
     next();
-  });
+  } catch (err) {
+    console.error("❌ Internal Complaint ID generation failed:", err);
+    next(err);
+  }
+});
 
-  InternalComplaintSchema.index({ complaintId: 1 }, { unique: true });
-  InternalComplaintSchema.index({ status: 1 });
-  InternalComplaintSchema.index({ createdAt: -1 });
-
-  export default InternalComplaintSchema;
+/* ============================================================
+   ⭐ EXPORT MODEL SAFELY
+============================================================ */
+export default InternalComplaintSchema;

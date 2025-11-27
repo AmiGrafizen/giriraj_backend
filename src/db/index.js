@@ -11,7 +11,7 @@ const __dirname = dirname(__filename);
 const envPath = path.resolve(__dirname, "../../config.env");
 dotenv.config({ path: envPath });
 
-const PRIMARY_URI = process.env.GIRIRAJ_DB_URI;
+const PRIMARY_URI = process.env.DBEV1_DB_URI;
 const BACKUP_URI = process.env.MONGODB_URI;
 
 if (!PRIMARY_URI || !BACKUP_URI) {

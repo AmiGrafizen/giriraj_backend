@@ -116,9 +116,6 @@ const createIPDPatient = async (payload, io) => {
   return populated;
 };
 
-// ======================================================================
-// CREATE IPD CONCERN (FULL getModel version)
-// ======================================================================
 const createIPDConcern = async (payload, io) => {
   // 1️⃣ Create complaint
   const complaint = await IPDConcern()?.create(payload);
@@ -358,32 +355,186 @@ const createIPDConcern = async (payload, io) => {
 };
 
 
+  const createInternalComplaint = async (payload, io) => {
+    try {
+      // 1️⃣ Create complaint
+      const complaint = await InternalComplaint().create(payload);
+      if (!complaint) {
+        console.error("Failed to create Internal Complaint");
+        return null;
+      }
 
-// ======================================================================
-// CREATE INTERNAL COMPLAINT
-// ======================================================================
-const createInternalComplaint = async (payload, io) => {
-  const internal = await InternalComplaint().create(payload);
+      // 2️⃣ Fetch populated record (if refs needed)
+      const populatedComplaint = await InternalComplaint()
+        .findById(complaint._id)
+        .lean();
 
-  const populated = await InternalComplaint()
-    .findById(internal._id)
-    .lean();
+      console.log("🟢 Internal Complaint created:", populatedComplaint.employeeName);
 
-  if (io) {
-    io.emit("internal:complaint", {
-      employeeName: populated.employeeName,
-      employeeId: populated.employeeId,
-      floorNo: populated.floorNo,
-      createdAt: populated.createdAt,
-    });
-  }
+      // 3️⃣ SOCKET.IO broadcast (live update for admin dashboard)
+      try {
+        if (io) {
+          io.emit("internal:complaint", {
+            employeeName: populatedComplaint.employeeName,
+            employeeId: populatedComplaint.employeeId,
+            contactNo: populatedComplaint.contactNo,
+            floorNo: populatedComplaint.floorNo,
+            createdAt: populatedComplaint.createdAt,
+          });
+          console.log("📢 Internal complaint broadcasted via Socket.IO");
+        }
+      } catch (err) {
+        console.error("❌ Socket.IO emit failed:", err.message);
+      }
 
-  return populated;
-};
+      // 4️⃣ Department constants
+      const DEPT_KEYS = [
+        "maintenance",
+        "itDepartment",
+        "bioMedicalDepartment",
+        "nursing",
+        "medicalAdmin",
+        "frontDesk",
+        "housekeeping",
+        "dietitian",
+        "pharmacy",
+        "security",
+        "hr",
+        "icn",
+        "mrd",
+        "accounts",
+      ];
 
-// ======================================================================
-// CREATE OPD PATIENT
-// ======================================================================
+      const MODULE_MAP = {
+        maintenance: "maintenance_internal",
+        itDepartment: "it_department_internal",
+        bioMedicalDepartment: "bio_medical_department_internal",
+        nursing: "nursing_internal",
+        medicalAdmin: "medical_admin_internal",
+        frontDesk: "front_desk_internal",
+        housekeeping: "housekeeping_internal",
+        dietitian: "dietitian_internal",
+        pharmacy: "pharmacy_internal",
+        security: "security_internal",
+        hr: "hr_internal",
+        icn: "icn_internal",
+        mrd: "mrd_internal",
+        accounts: "accounts_internal",
+      };
+
+      const formatDeptLabel = (key = "") =>
+        key
+          .replace(/([A-Z])/g, " $1")
+          .replace(/Department/i, " Department")
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+          .trim();
+
+      const DEPT_LABEL = {};
+      for (const key of DEPT_KEYS) {
+        DEPT_LABEL[key] = formatDeptLabel(key);
+      }
+
+      // 5️⃣ Determine involved departments
+      const involvedDepartments = DEPT_KEYS.filter((key) => {
+        const block = populatedComplaint[key];
+        if (!block) return false;
+        const hasText = block.text && String(block.text).trim().length > 0;
+        const hasAttachments =
+          Array.isArray(block.attachments) && block.attachments.length > 0;
+        return hasText || hasAttachments;
+      });
+
+      // 6️⃣ Prevent duplicate notifications
+      const cacheKey = `internal_fcm_sent_${populatedComplaint._id}`;
+      if (global[cacheKey]) {
+        console.log("⚠️ Duplicate internal complaint notification skipped:", cacheKey);
+        return populatedComplaint;
+      }
+      global[cacheKey] = true;
+      setTimeout(() => delete global[cacheKey], 60000);
+
+      // 7️⃣ Send department notifications
+      try {
+        if (involvedDepartments.length === 0) {
+          console.log("⚠️ No department selected. Skipping notifications.");
+        } else {
+          for (const deptKey of involvedDepartments) {
+            const moduleName = MODULE_MAP[deptKey];
+            const topicName = `internal-${moduleName}`;
+            const label = DEPT_LABEL[deptKey];
+
+            // 🔔 FCM notification
+            await sendNotification({
+              title: "New Internal Complaint",
+              body: `Employee ${populatedComplaint.employeeName} raised a complaint in ${label}.`,
+              topic: topicName,
+              data: {
+                complaintId: populatedComplaint._id?.toString(),
+                employeeName: populatedComplaint.employeeName,
+                employeeId: populatedComplaint.employeeId,
+                floorNo: populatedComplaint.floorNo,
+                department: label,
+                module: moduleName,
+                sound: "default",
+              },
+            });
+
+            console.log(`📨 FCM sent to topic: ${topicName}`);
+
+            // ⚡ Centrifugo broadcast
+            await publishToCentrifugo(topicName, {
+              type: "new_internal_complaint",
+              title: "New Internal Complaint",
+              message: `Employee ${populatedComplaint.employeeName} raised a complaint in ${label}.`,
+              employeeName: populatedComplaint.employeeName,
+              employeeId: populatedComplaint.employeeId,
+              floorNo: populatedComplaint.floorNo,
+              department: label,
+              createdAt: populatedComplaint.createdAt,
+            });
+            
+            console.log(`📡 Centrifugo event pushed to: ${topicName}`);
+          }
+        }
+      } catch (err) {
+        console.error("❌ Internal complaint notification failed:", err.message);
+      }
+
+      // 8️⃣ Save notification log in DB
+      try {
+        const departmentList =
+          involvedDepartments.length > 0
+            ? involvedDepartments.join(", ")
+            : "N/A";
+
+        await Notification()?.create({
+          title: "Internal Complaint Registered",
+          body: `Employee ${populatedComplaint.employeeName} raised a complaint for ${departmentList}.`,
+          data: {
+            complaint: populatedComplaint.complaintId?.toString() || "N/A",
+            complaintId: populatedComplaint._id?.toString(),
+            employeeName: populatedComplaint.employeeName,
+            employeeId: populatedComplaint.employeeId,
+            floorNo: populatedComplaint.floorNo,
+            departments: departmentList,
+          },
+          department: involvedDepartments.length > 1 ? "Multiple" : departmentList,
+          status: "sent",
+        });
+
+        console.log("✅ Internal complaint notification saved in DB");
+      } catch (err) {
+        console.error("❌ Failed to save internal complaint notification:", err.message);
+      }
+
+      return populatedComplaint;
+    } catch (err) {
+      console.error("❌ Internal Complaint Creation Error:", err.message);
+      return null;
+    }
+  };
+
+
 const createOPDPatient = async (payload, io) => {
   const { showInStackBar = true, userId, userModel } = payload;
 

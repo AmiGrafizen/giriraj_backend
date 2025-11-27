@@ -53,11 +53,7 @@ const ConcernItemSchema = new mongoose.Schema(
     },
 
     resolution: {
-      actionType: {
-        type: String,
-        enum: ["RCA", "CA", "PA"],
-        default: null,
-      },
+      actionType: { type: String, enum: ["RCA", "CA", "PA"], default: null },
       actionNote: { type: String },
       proof: [{ type: String }],
       resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "GIRIRAJUser" },
@@ -69,7 +65,7 @@ const ConcernItemSchema = new mongoose.Schema(
 );
 
 /* ============================================================
-   ⭐ SUPPORTING SUBSCHEMAS
+   ⭐ SUBSCHEMAS
 ============================================================ */
 const EscalationSchema = new mongoose.Schema(
   {
@@ -115,59 +111,50 @@ const ResolutionSchema = new mongoose.Schema(
 );
 
 /* ============================================================
-   ⭐ COUNTER SCHEMA (AUTO-ID)
+   ⭐ MAIN INTERNAL COMPLAINT SCHEMA
 ============================================================ */
-const CounterSchema = new mongoose.Schema({
-  name: { type: String, required: true, unique: true },
-  seq: { type: Number, default: 0 },
-  seriesChar: { type: String, default: "A" },
-});
-
-// Register Counter model only if not already created
-if (!mongoose.models.Counter) {
-  mongoose.model("Counter", CounterSchema);
-}
-
-/* ============================================================
-   ⭐ MAIN IPD CONCERN SCHEMA
-============================================================ */
-const IPDConcernSchema = new mongoose.Schema(
+const InternalComplaintSchema = new mongoose.Schema(
   {
-    patientName: { type: String, required: true },
+    employeeName: { type: String, required: true },
+    employeeId: { type: String, required: true },
+
     complaintId: { type: String, unique: true },
 
-    contact: { type: String },
-    bedNo: { type: String },
-    language: { type: String },
-
-    consultantDoctorName: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "GIRIRAJDoctor",
-    },
-
-    priority: {
-      type: String,
-      enum: ["Urgent", "Normal"],
-      default: "Normal",
-    },
+    contactNo: { type: String },
+    floorNo: { type: String },
 
     // ⭐ Departments
-    doctorServices: { type: ConcernItemSchema },
-    billingServices: { type: ConcernItemSchema },
-    housekeeping: { type: ConcernItemSchema },
     maintenance: { type: ConcernItemSchema },
-    diagnosticServices: { type: ConcernItemSchema },
-    dietitianServices: { type: ConcernItemSchema },
-    security: { type: ConcernItemSchema },
+    itDepartment: { type: ConcernItemSchema },
+    bioMedicalDepartment: { type: ConcernItemSchema },
     nursing: { type: ConcernItemSchema },
+    medicalAdmin: { type: ConcernItemSchema },
+    frontDesk: { type: ConcernItemSchema },
+    housekeeping: { type: ConcernItemSchema },
+    dietitian: { type: ConcernItemSchema },
+    pharmacy: { type: ConcernItemSchema },
+    security: { type: ConcernItemSchema },
+    hr: { type: ConcernItemSchema },
+    icn: { type: ConcernItemSchema },
+    mrd: { type: ConcernItemSchema },
+    accounts: { type: ConcernItemSchema },
 
     comments: { type: String },
 
     status: {
       type: String,
-      enum: ["open", "in_progress", "forwarded", "resolved", "escalated", "partial"],
+      enum: [
+        "open",
+        "in_progress",
+        "forwarded",
+        "resolved",
+        "escalated",
+        "partial",
+        "resolved_by_admin",
+      ],
       default: "open",
       lowercase: true,
+      trim: true,
     },
 
     note: { type: String },
@@ -181,74 +168,75 @@ const IPDConcernSchema = new mongoose.Schema(
 );
 
 /* ============================================================
-   ⭐ VIRTUAL: MODULE LIST
+   ⭐ VIRTUAL: ACTIVE MODULES LIST
 ============================================================ */
-IPDConcernSchema.virtual("modules").get(function () {
-  return [
-    "doctorServices",
-    "billingServices",
-    "housekeeping",
+InternalComplaintSchema.virtual("modules").get(function () {
+  const modules = [];
+  const keys = [
     "maintenance",
-    "diagnosticServices",
-    "dietitianServices",
-    "security",
+    "itDepartment",
+    "bioMedicalDepartment",
     "nursing",
-  ].filter((key) => !!this[key]);
+    "medicalAdmin",
+    "frontDesk",
+    "housekeeping",
+    "dietitian",
+    "pharmacy",
+    "security",
+    "hr",
+    "icn",
+    "mrd",
+    "accounts",
+  ];
+
+  keys.forEach((key) => {
+    if (this[key]) modules.push(key);
+  });
+
+  return modules;
 });
 
-IPDConcernSchema.set("toJSON", { virtuals: true });
-IPDConcernSchema.set("toObject", { virtuals: true });
+InternalComplaintSchema.set("toJSON", { virtuals: true });
+InternalComplaintSchema.set("toObject", { virtuals: true });
 
 /* ============================================================
-   ⭐ AUTO-GENERATE complaintId WITHOUT COUNTER MODEL
-   ✔ Uses this.constructor → ALWAYS SAFE
-   ✔ No Counter model
-   ✔ No buffering timeout
+   ⭐ AUTO GENERATE complaintId (NO COUNTER MODEL)
 ============================================================ */
-IPDConcernSchema.pre("save", async function (next) {
+InternalComplaintSchema.pre("save", async function (next) {
   if (this.complaintId) return next();
 
   try {
-    const Model = this.constructor; // ⭐ ALWAYS gives the current model
+    const Model = this.constructor;
 
-    // 1️⃣ Fetch last record
-    const lastRecord = await Model
-      .findOne({ complaintId: { $exists: true } })
+    const last = await Model.findOne({ complaintId: { $exists: true } })
       .sort({ createdAt: -1 })
       .lean();
 
     let seriesChar = "A";
     let seq = 0;
 
-    if (lastRecord?.complaintId) {
-      const last = lastRecord.complaintId;  // Example: A00025
-      seriesChar = last.charAt(0);          // A
-      seq = parseInt(last.slice(1));        // 25
+    if (last?.complaintId) {
+      seriesChar = last.complaintId.charAt(0);
+      seq = parseInt(last.complaintId.slice(1));
     }
 
-    // 2️⃣ Increment
     seq += 1;
 
-    // 3️⃣ Move to next alphabet after 99999
     if (seq > 99999) {
       seq = 1;
       seriesChar = String.fromCharCode(seriesChar.charCodeAt(0) + 1);
     }
 
-    // 4️⃣ Generate final complaint ID
     this.complaintId = `${seriesChar}${String(seq).padStart(5, "0")}`;
 
     next();
   } catch (err) {
-    console.error("❌ complaintId generation failed:", err);
+    console.error("❌ Internal Complaint ID generation failed:", err);
     next(err);
   }
 });
 
-
-
 /* ============================================================
    ⭐ REGISTER MODEL SAFELY
 ============================================================ */
-export default IPDConcernSchema;
- ;
+export default InternalComplaintSchema;
